@@ -1,0 +1,48 @@
+{
+  "name": "arcledger",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "examples/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n api,web \"npm run dev -w @arcledger/api\" \"npm run dev -w @arcledger/web\"",
+    "dev:indexer": "tsx --env-file-if-exists=.env apps/indexer/src/main.ts",
+    "db:migrate": "tsx --env-file-if-exists=.env packages/database/src/migrate.ts",
+    "typecheck": "tsc --noEmit && npm run typecheck -w @arcledger/web",
+    "test": "vitest run",
+    "build": "npm run typecheck && npm run build -w @arcledger/web",
+    "check:rpc": "tsx --env-file-if-exists=.env scripts/check-rpc.ts",
+    "test:ui": "playwright test",
+    "format": "prettier --write apps packages scripts tests docs *.json *.ts *.md *.yml",
+    "test:mainnet": "tsx --env-file-if-exists=.env scripts/smoke-mainnet.ts"
+  },
+  "dependencies": {
+    "viem": "^2.37.0",
+    "zod": "^4.0.0",
+    "pg": "^8.16.0",
+    "hono": "^4.9.0",
+    "@hono/node-server": "^1.19.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "tsx": "^4.20.0",
+    "vitest": "^4.1.11",
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.15.0",
+    "concurrently": "^9.2.0",
+    "@electric-sql/pglite": "^0.3.0",
+    "@playwright/test": "^1.55.0",
+    "prettier": "^3.6.0"
+  },
+  "engines": {
+    "node": ">=22.16.0"
+  },
+  "overrides": {
+    "postcss": "^8.5.23"
+  },
+  "license": "MIT"
+}

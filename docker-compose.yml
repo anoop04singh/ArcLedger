@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: arcledger
+      POSTGRES_PASSWORD: arcledger
+      POSTGRES_DB: arcledger
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: ["arcledger-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arcledger"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+volumes:
+  arcledger-data:
