@@ -85,3 +85,9 @@ Railway references: [shared monorepos](https://docs.railway.com/deployments/mono
 - Web uses Railway private networking. Backend workers reference the API service variables; database credentials remain off the web service.
 - Initial production checks confirmed Mainnet mode, healthy database/RPC, advancing raw checkpoints and real recent transaction data. The preserved historical backlog is still syncing; no checkpoint was reset or skipped. Use `/v1/status` for current lag and pending normalization.
 - The lockfile includes Tailwind native packages for Linux, verified by the Railway Docker build.
+
+## Rolling storage maintenance
+
+The indexer enforces the fixed 400 MB database budget described in the README. Maintenance starts near 300 MB and targets 220 MB including a write reservation; do not wait for Supabase's read-only quota protection. Projection batches are bounded and wait near the trigger. Monitor `retention.state` and retained coverage in `/v1/status`. Compaction may briefly block reads. If retention is `blocked`, leave the workers' protection in place and inspect storage/permissions; never skip the checkpoint or disable TLS.
+
+For an existing over-quota database, pause indexer/ledger replicas, run migration 006, remove oldest histories and compact under the raw/projection locks, then confirm allocated database bytes before resuming one replica each. Supabase documents a maintenance-session read/write override for cleanup; normal workers never override provider read-only protection. A free-plan quota is not an archival storage solution.

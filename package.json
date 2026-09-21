@@ -29,7 +29,8 @@
     "start:indexer": "tsx apps/indexer/src/main.ts",
     "start:ledger": "tsx scripts/project-worker.ts",
     "start:web": "npm run start -w @arcledger/web",
-    "verify:replay": "tsx --env-file-if-exists=.env scripts/verify-replay.ts"
+    "verify:replay": "tsx --env-file-if-exists=.env scripts/verify-replay.ts",
+    "db:retain": "tsx --env-file-if-exists=.env scripts/retain-history.ts"
   },
   "dependencies": {
     "viem": "^2.37.0",

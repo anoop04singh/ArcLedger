@@ -1,4 +1,9 @@
-import { createPool, projectPending } from "@arcledger/database";
+import {
+  createPool,
+  projectPending,
+  databaseBytes,
+  HISTORY_TRIGGER_BYTES,
+} from "@arcledger/database";
 import { readMode } from "@arcledger/arc-config";
 import { setTimeout } from "node:timers/promises";
 if (readMode() !== "mainnet")
@@ -18,7 +23,9 @@ try {
     try {
       db = await pool.connect();
       db.on("error", connectionError);
-      const result = await projectPending(db);
+      if ((await databaseBytes(db)) >= HISTORY_TRIGGER_BYTES - 16_000_000)
+        throw new Error("Waiting for storage retention");
+      const result = await projectPending(db, 20);
       idle = result.projected === 0;
       if (result.projected || result.failed)
         console.log(JSON.stringify({ event: "ledger_projected", ...result }));

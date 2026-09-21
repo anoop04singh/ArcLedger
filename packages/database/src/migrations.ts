@@ -15,6 +15,9 @@ export async function migrate(db: SqlClient) {
       ["003-ledger", "./migrations/003-ledger.sql"],
       ["004-validation", "./migrations/004-validation.sql"],
       ["005-self-records", "./migrations/005-self-records.sql"],
+      ["006-retention", "./migrations/006-retention.sql"],
+      ["007-retention-indexes", "./migrations/007-retention-indexes.sql"],
+      ["008-retention-batches", "./migrations/008-retention-batches.sql"],
     ]) {
       const { rows } = await db.query(
         "SELECT name FROM schema_migrations WHERE name=$1",

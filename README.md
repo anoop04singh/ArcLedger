@@ -100,3 +100,23 @@ No smart contract is required. Webhook tables remain reserved and unused. Authen
 Read [architecture](docs/architecture.md), [normalization](docs/normalization.md), [API](docs/api.md), [Part 5 validation/demo](docs/part-5.md), [Railway](docs/railway.md), and the earlier [ingestion](docs/part-2.md), [ledger](docs/part-3.md), [Supabase](docs/part-4.md) runbooks.
 
 MIT licensed.
+
+## Rolling history: 400 MB database budget
+
+This deployment is **a recent-history ledger, not an archival indexer**. Its database budget is **400,000,000 bytes (400 decimal MB)** to leave headroom under the Supabase Free database allowance. Both Mainnet workers enforce the policy automatically; no extra scheduler is required.
+
+- Before each new block, the indexer measures `pg_database_size(current_database())`, including tables, indexes, TOAST and other database objects. It reserves at least 16 MB (or 12× the incoming JSON size) for raw writes and downstream accounting. Oversized blocks pause ingestion rather than bypassing the limit.
+- Cleanup starts conservatively when measured size plus the reservation reaches **300 MB**. It aims for **220 MB including the reservation**, rather than filling the entire allowance. The ledger worker waits near the cleanup threshold and projects bounded batches of 20 transactions.
+- Oldest blocks expire first. Their raw logs, receipts, transactions, transfers and address entries are deleted **together in one transaction**. The latest committed block and ingestion checkpoint remain, so the next block still verifies its parent and resumes normally. A retained block is never partially discarded.
+- The indexer holds the raw writer lock and the projection lock during maintenance. `VACUUM FULL` then physically compacts the affected tables/indexes. Ordinary DELETE/VACUUM does not reliably shrink allocated database size. Compaction can temporarily block database-backed reads and needs temporary disk space; it is deliberately started below the budget.
+- Interrupted compaction is recorded and retried before more history is removed. If the remaining data, unrelated database objects, permissions, or an oversized block prevent safe reclamation, ingestion **pauses with its checkpoint intact** instead of continuing to fill storage.
+- Retained coverage moves forward in `/v1/status`, the explorer, and address pages. Received/sent/fees/transaction counts describe **retained history only**, never lifetime totals. Current balances still use Arc RPC. Pruned transaction hashes return 404; pagination cannot recover expired entries, so reload history if the window moves while browsing.
+- Validation reports whose sample overlaps pruned history expire too, avoiding a misleading VALID badge for missing evidence. Run a fresh validation against retained, fully normalized blocks.
+
+The 400 MB value is an application storage budget, not a PostgreSQL disk quota: WAL, temporary compaction files, provider accounting delays, or external writes are outside the indexer's byte accounting. The 300/220 MB operating thresholds leave room for these effects. Do not put unrelated large datasets in this database or disable retention. Deletion is permanent; export needed history before it expires.
+
+If a database is already over quota and read-only, stop both writers first. Use Supabase's [documented maintenance-session procedure](https://supabase.com/docs/guides/platform/database-size#disabling-read-only-mode) to allow cleanup, migrate, prune and compact; verify size before restarting. Do not enable normal ingestion as a workaround for the quota. See [Railway operations](docs/railway.md).
+
+## Landing and explorer interactions
+
+The landing page explains the two USDC representations, matching, receipt-derived fees, validation scope and the rolling history window. It includes a scroll-driven SVG stream merge, a 2×→1× illustrative counter, text reveals, magnetic/rolling buttons, an interactive normalization card, API examples with copy controls, a pausable use-case ticker, install commands and a keyboard-accessible FAQ. Animations use the free `motion/react` APIs and respect reduced-motion preferences. The explorer uses real status/recent-transaction responses, 15-second refresh, pause/resume, filters, explicit failure states, a loading skeleton and the storage/coverage notice.

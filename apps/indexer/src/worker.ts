@@ -77,6 +77,7 @@ export async function runIndexer({
   connect,
   options,
   signal,
+  beforeBlock,
   onProgress = () => {},
   onRetry = () => {},
 }: {
@@ -84,6 +85,10 @@ export async function runIndexer({
   connect: () => Promise<IndexerSession>;
   options: IndexerOptions;
   signal: AbortSignal;
+  beforeBlock?: (
+    db: SqlClient,
+    block: import("@arcledger/types").RawBlockRecord,
+  ) => Promise<void>;
   onProgress?: (progress: IndexerProgress) => void | Promise<void>;
   onRetry?: (error: unknown) => void;
 }) {
@@ -136,6 +141,7 @@ export async function runIndexer({
         );
         for (const block of blocks) {
           if (signal.aborted) break;
+          await beforeBlock?.(session.db, block);
           await commitRawBlock(session.db, block, head.toString());
           consecutiveFailures = 0;
           next = BigInt(block.number) + 1n;

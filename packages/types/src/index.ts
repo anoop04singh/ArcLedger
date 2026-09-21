@@ -54,6 +54,14 @@ export interface ChainAccountingAdapter {
   normalizeBalance(value: bigint): bigint;
 }
 export type LedgerStatus = {
+  retention?: {
+    capBytes: number;
+    databaseBytes: number;
+    prunedBlocks: number;
+    prunedThrough: string | null;
+    state: "ready" | "pruning" | "blocked";
+    checkedAt: string;
+  };
   mode: "demo" | "mainnet";
   pendingNormalization?: number;
   state: "demo" | "live" | "syncing" | "idle" | "stale";

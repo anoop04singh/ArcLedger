@@ -114,8 +114,9 @@ export default async function AddressPage({
           </span>
         </div>
         <p className="coverage">
-          Totals cover indexed blocks {ledger.coverageStart ?? "—"} onward.
-          Current balance is a separate snapshot.
+          Rolling history: totals cover retained indexed blocks{" "}
+          {ledger.coverageStart ?? "—"} onward. Older records may expire under
+          the 400 MB history budget. Current balance is a separate snapshot.
         </p>
         <AddressHistory
           key={`${ledger.address}:${cursor ?? ""}`}

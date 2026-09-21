@@ -4,7 +4,11 @@ import {
   readMode,
   RpcUnavailableError,
 } from "@arcledger/arc-config";
-import { createPool } from "@arcledger/database";
+import {
+  createPool,
+  enforceHistoryBudget,
+  StorageCapacityError,
+} from "@arcledger/database";
 import { readIndexerOptions, runIndexer } from "./worker.js";
 if (readMode() !== "mainnet")
   throw new Error("Indexer requires ARCLEDGER_MODE=mainnet");
@@ -43,6 +47,15 @@ try {
         },
       };
     },
+    beforeBlock: async (db, block) => {
+      const reserve = Math.max(
+        16_000_000,
+        Buffer.byteLength(JSON.stringify(block)) * 12,
+      );
+      const result = await enforceHistoryBudget(db, reserve);
+      if (result.prunedBlocks)
+        console.log(JSON.stringify({ event: "history_pruned", ...result }));
+    },
     onProgress: (progress) =>
       console.log(JSON.stringify({ event: "block_committed", ...progress })),
     onRetry: (error) =>
@@ -50,7 +63,8 @@ try {
         JSON.stringify({
           event: "indexer_retry",
           reason:
-            error instanceof RpcUnavailableError
+            error instanceof RpcUnavailableError ||
+            error instanceof StorageCapacityError
               ? error.message
               : "Database or RPC snapshot unavailable; retrying from durable checkpoint.",
         }),

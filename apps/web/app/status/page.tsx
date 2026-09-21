@@ -1,3 +1,4 @@
+import { RetentionNotice } from "@/components/retention-notice";
 import { ArrowUpRight, Database, Radio } from "lucide-react";
 import { getStatus, ApiError } from "@/lib/api";
 import { Enter } from "@/components/motion";
@@ -29,6 +30,7 @@ export default async function StatusPage() {
         <p>Indexing health, normalization, and accounting integrity.</p>
       </div>
       <ModeNotice mode={s.mode} />
+      <RetentionNotice retention={s.retention} startBlock={s.startBlock} />
       {(s.pendingNormalization ?? 0) > 0 && (
         <p className="demo-notice">
           {s.pendingNormalization} raw transactions await normalization.

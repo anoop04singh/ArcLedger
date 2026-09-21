@@ -1,3 +1,11 @@
+export {
+  enforceHistoryBudget,
+  pruneOldestBlocks,
+  databaseBytes,
+  HISTORY_CAP_BYTES,
+  HISTORY_TRIGGER_BYTES,
+  StorageCapacityError,
+} from "./retention.js";
 import { latestValidation } from "./validation.js";
 import { databaseHealth } from "./client.js";
 export { createPool, databaseHealth, databaseOptions } from "./client.js";
@@ -147,6 +155,11 @@ export class PostgresStore implements LedgerStore {
       (SELECT count(*)::int FROM transactions WHERE raw_receipt IS NOT NULL) AS raw_transactions,
       (SELECT count(*)::int FROM transactions WHERE projection_error IS NOT NULL) AS projection_errors`);
     const validationRun = await latestValidation(this.db);
+    const {
+      rows: [retention],
+    } = await this.db.query("SELECT * FROM retention_state WHERE chain_id=$1", [
+      ARC_MAINNET.chainId,
+    ]);
     const lag = state
       ? (
           BigInt(state.observed_head) - BigInt(state.last_processed_block)
@@ -154,6 +167,16 @@ export class PostgresStore implements LedgerStore {
       : null;
     return {
       mode: this.mode,
+      retention: retention
+        ? {
+            capBytes: Number(retention.cap_bytes),
+            databaseBytes: Number(retention.database_bytes),
+            prunedBlocks: Number(retention.pruned_blocks),
+            prunedThrough: retention.pruned_through,
+            state: retention.state,
+            checkedAt: new Date(retention.checked_at).toISOString(),
+          }
+        : undefined,
       state: !state
         ? "idle"
         : Date.now() - new Date(state.updated_at).getTime() > 30_000

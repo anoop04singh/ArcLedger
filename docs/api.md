@@ -61,3 +61,7 @@ Summary amount is explicitly **total canonical transfer volume**, not a sender's
 ### Recent explorer activity
 
 `GET /v1/status?includeRecent=true` includes `recentTransactions`, at most 12 completed canonical projections ordered by block and transaction index descending. Entries contain hash, block, timestamp, fee payer (`from`), a single movement's recipient when applicable, non-self canonical transfer volume, exact USDC fee, movement count, receipt status and matched duplicate count. `from` is the transaction submitter, which can be a relayer; inspect the transaction for actual transfer participants. Without this query parameter, the response remains unchanged. Demo responses remain explicitly marked. The UI polls `/api/explorer`, its fixed same-origin backend relay, every 15 seconds while visible and unpaused.
+
+### Storage retention
+
+`/v1/status.retention` exposes `capBytes`, `databaseBytes` (last measured allocation), `state` (`ready`, `pruning`, `blocked`), `prunedBlocks`, `prunedThrough`, and `checkedAt`. `startBlock` and `rawCoverageStart` identify the retained window and advance when old complete blocks expire. Address summaries are window totals. Current balances are fresh RPC values. Raw evidence is available only for retained transactions; expired hashes return 404. Validation samples overlapping expired history are removed. See the README's 400 MB policy for compaction and pause behavior.

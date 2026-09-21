@@ -1,233 +1,329 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  ArrowRight,
+  Layers3,
+  Hash,
+  ReceiptText,
+  FileSearch,
+  ShieldCheck,
+  RotateCcw,
   ArrowUpRight,
   Check,
-  Layers3,
-  ReceiptText,
-  ScanLine,
-  Building2,
-  Code2,
-  Wallet,
-  ShieldCheck,
 } from "lucide-react";
 import { SearchBar } from "@/components/search";
 import { Enter, Reveal } from "@/components/motion";
 import { NormalizationDemo } from "@/components/normalization-demo";
+import {
+  ApiPreview,
+  CopyCode,
+  FAQ,
+  MagneticLink,
+  ScrambleHeadline,
+  ScrollWords,
+  SignatureMerge,
+  Steps,
+  UseCaseTicker,
+} from "@/components/landing-motion";
+const repo = "https://github.com/anoop04singh/ArcLedger";
+export const metadata: Metadata = {
+  title: { absolute: "ArcLedger: One Ledger for Arc USDC" },
+  description:
+    "Arc shows USDC in two ways, so most tools count it twice. ArcLedger counts every dollar once. Open source, exact to the last digit.",
+};
+const features = [
+  [
+    Layers3,
+    "Counted once, never twice",
+    "Native and ERC-20 records are matched exactly, so matched representations never double-count volume.",
+  ],
+  [
+    Hash,
+    "Exact to the last digit",
+    "All values use big integers and exact decimal strings. No rounding, no floating-point errors.",
+  ],
+  [
+    ReceiptText,
+    "Gas fees, separated",
+    "Fees come straight from receipts and are shown apart from transfers. Failed transactions and relayer-paid fees are handled correctly.",
+  ],
+  [
+    FileSearch,
+    "Full audit trail",
+    "Raw transactions, receipts and logs are kept within the retained window. Add ?includeRaw=true to the transaction endpoint to see the evidence. Self-transfers get an audit record with zero balance change.",
+  ],
+  [
+    ShieldCheck,
+    "Independently validated",
+    "A separate validator re-fetches fresh data from Arc, decodes it on its own, and checks it against the ledger. VALID, INVALID or ERROR results are stored and visible in the UI.",
+  ],
+  [
+    RotateCcw,
+    "Built to recover",
+    "Raw data and its checkpoint are saved together. If a worker crashes or restarts, it picks up cleanly without ingestion gaps or duplicates. Older history expires under the retention policy.",
+  ],
+] as const;
 export default function Home() {
   return (
-    <Enter className="home landing">
+    <Enter className="home landing immersive-landing">
       <section className="landing-hero">
         <div className="landing-copy">
           <div className="launch-tag">
-            <span /> BUILT FOR ARC. PRECISE BY DESIGN.
+            <span /> ONE LEDGER FOR ARC USDC
           </div>
           <h1>
-            One movement.
+            Every USDC movement on Arc.
             <br />
-            <span>Counted once.</span>
+            <ScrambleHeadline />
           </h1>
-          <p className="landing-lead">The accounting layer for Arc USDC.</p>
           <p className="landing-description">
-            Native transfers. ERC-20 activity. Network fees.
-            <br />
-            One clear ledger of what actually moved.
+            Arc shows the same USDC balance in two formats. Most tools count
+            both, so activity looks twice as big as it is. ArcLedger merges them
+            into one clean, exact ledger.
           </p>
           <div className="landing-actions">
-            <Link className="solid-link" href="/explorer">
-              Open explorer <ArrowUpRight size={17} />
-            </Link>
-            <a className="outline-link" href="#how-it-works">
-              See how it works <ArrowRight size={16} />
-            </a>
+            <MagneticLink href="/explorer">View Live Demo</MagneticLink>
+            <MagneticLink href={repo} secondary>
+              Star on GitHub
+            </MagneticLink>
           </div>
-          <div className="hero-assurance">
-            <ShieldCheck size={15} /> Read-only by design <span /> No wallet
-            connection
-          </div>
+          <p className="hero-assurance">
+            Open source · MIT licensed · No API keys · No accounts
+          </p>
         </div>
-        <NormalizationDemo />
+        <SignatureMerge />
       </section>
       <div className="landing-search">
         <div>
-          <span className="eyebrow">ALREADY HAVE A TRANSACTION?</span>
+          <span className="eyebrow">FOLLOW A TRANSACTION</span>
           <p>Go straight to the evidence.</p>
         </div>
         <SearchBar />
       </div>
-      <Reveal className="principle-strip">
-        <div>
-          <strong>18 → 6</strong>
-          <span>Decimal representations, reconciled</span>
-        </div>
-        <div>
-          <strong>1 : 1</strong>
-          <span>Evidence matching, without double counting</span>
-        </div>
-        <div>
-          <strong>USDC</strong>
-          <span>Transfers and gas, in the same currency</span>
-        </div>
-      </Reveal>
-      <section id="how-it-works" className="landing-section">
+      <section className="landing-section problem-section" id="problem">
         <Reveal className="section-intro">
-          <span className="eyebrow">01 / LESS NOISE. MORE SIGNAL.</span>
+          <span className="eyebrow">01 / THE PROBLEM</span>
           <h2>
-            Events tell you what happened.
+            Arc USDC has two faces.
             <br />
-            <span>ArcLedger tells you what moved.</span>
+            <span>That breaks your numbers.</span>
+          </h2>
+          <p>The same USDC balance on Arc can be read two ways:</p>
+        </Reveal>
+        <div className="representation-pair">
+          <div>
+            <span>Native</span>
+            <strong>
+              18 <small>decimals</small>
+            </strong>
+            <code>10.000000000000000000</code>
+          </div>
+          <span className="representation-equals">=</span>
+          <div>
+            <span>ERC-20</span>
+            <strong>
+              6 <small>decimals</small>
+            </strong>
+            <code>10.000000</code>
+          </div>
+        </div>
+        <ScrollWords text="Both fire their own transfer events. Add them together and one payment looks like two. Volumes double, balances drift, and reports stop matching reality." />
+      </section>
+      <section className="landing-section fix-section" id="the-fix">
+        <Reveal className="section-intro">
+          <span className="eyebrow">02 / THE FIX</span>
+          <h2>
+            One payment.
+            <br />
+            <span>One entry.</span>
           </h2>
           <p>
-            Arc's native USDC and ERC-20 interface represent the same balance. A
-            single transfer can appear in both event streams. Adding them
-            together gets the accounting wrong.
+            ArcLedger keeps the original evidence and matches the native and
+            ERC-20 records one-to-one. Each movement is counted once, and gas
+            fees are tracked separately from the receipt.
           </p>
+          <p>The result is a ledger you can trust and explain.</p>
+          <span className="small-note">
+            Evidence is preserved within the current retained history window.
+          </span>
         </Reveal>
-        <div className="feature-grid">
-          {[
-            {
-              Icon: Layers3,
-              title: "Reconcile the representations.",
-              text: "Match native and ERC-20 records by transaction, participants and exact amount. Keep repeated transfers separate.",
-              tag: "ONE MOVEMENT, COUNTED ONCE",
-              color: "violet",
-            },
-            {
-              Icon: ReceiptText,
-              title: "Make the math explicit.",
-              text: "Preserve native precision. Separate the transfer from the gas fee. Show the sender’s gross and net change.",
-              tag: "INTEGER PRECISION, END TO END",
-              color: "mint",
-            },
-            {
-              Icon: ScanLine,
-              title: "Keep the receipts.",
-              text: "Trace every canonical record back to its raw logs. Inspect how it was matched, and what was excluded.",
-              tag: "EXPLAINABLE BY DEFAULT",
-              color: "orange",
-            },
-          ].map(({ Icon, title, text, tag, color }, i) => (
-            <Reveal key={title} className={`glass feature-card ${color}`}>
-              <div className="feature-top">
-                <span className="feature-icon">
-                  <Icon size={23} strokeWidth={1.5} />
-                </span>
+        <NormalizationDemo />
+      </section>
+      <section className="landing-section" id="how-it-works">
+        <Reveal className="section-intro">
+          <span className="eyebrow">03 / HOW IT WORKS</span>
+          <h2>
+            From raw events.
+            <br />
+            <span>To a ledger that adds up.</span>
+          </h2>
+        </Reveal>
+        <Steps />
+      </section>
+      <section className="landing-section" id="features">
+        <Reveal className="section-intro">
+          <span className="eyebrow">04 / PRECISE BY DESIGN</span>
+          <h2>
+            The details make
+            <br />
+            <span>the difference.</span>
+          </h2>
+        </Reveal>
+        <div className="feature-bento">
+          {features.map(([Icon, title, body], i) => (
+            <Reveal className={`glass bento-card bento-${i}`} key={title}>
+              <span className="bento-beam" aria-hidden="true" />
+              <div className="bento-icon">
+                <Icon size={20} />
                 <span>0{i + 1}</span>
               </div>
               <h3>{title}</h3>
-              <p>{text}</p>
-              <span className="feature-tag">{tag}</span>
+              <p>{body}</p>
             </Reveal>
           ))}
         </div>
       </section>
-      <Reveal className="accounting-section">
-        <div>
-          <span className="eyebrow">02 / THE WHOLE ECONOMIC PICTURE</span>
+      <section className="landing-section" id="api">
+        <Reveal className="section-intro">
+          <span className="eyebrow">05 / EXPLORER + API</span>
           <h2>
-            A transfer is only
+            Simple to read.
             <br />
-            part of the story.
+            <span>Simple to build on.</span>
           </h2>
           <p>
-            On Arc, gas is USDC too. ArcLedger gives every fee a place in the
-            ledger, without confusing it with the transfer amount.
+            Four public endpoints, no signup. Exact values, clear evidence and
+            cursor pagination.
           </p>
-          <Link className="text-link" href="/explorer">
-            Inspect a transaction <ArrowUpRight size={15} />
-          </Link>
-        </div>
-        <div className="accounting-example glass">
-          <div className="between">
-            <span className="eyebrow">SENDER'S LEDGER</span>
-            <span className="example-tag">Illustration</span>
-          </div>
-          <div>
-            <span>Transfer to recipient</span>
-            <strong>
-              −10.000000 <small>USDC</small>
-            </strong>
-          </div>
-          <div>
-            <span>Network fee</span>
-            <strong>
-              −0.000031 <small>USDC</small>
-            </strong>
-          </div>
-          <div className="net-example">
-            <span>Net change</span>
-            <strong>
-              −10.000031 <small>USDC</small>
-            </strong>
-          </div>
-          <p>
-            <Check size={13} /> Recipient receives 10.000000 USDC.
-          </p>
-        </div>
-      </Reveal>
-      <section className="landing-section">
+        </Reveal>
+        <ApiPreview />
+        <p className="small-note">
+          Address summaries cover retained history. Current balances come from
+          eth_getBalance on Arc.
+        </p>
+      </section>
+      <section className="landing-section audience-section">
         <Reveal className="section-intro">
-          <span className="eyebrow">
-            03 / BUILT FOR THE PEOPLE BEHIND THE PAYMENTS
-          </span>
+          <span className="eyebrow">06 / WHO IT’S FOR</span>
           <h2>
-            From raw activity
+            For the people who
             <br />
-            to useful accounting.
+            <span>need the numbers right.</span>
           </h2>
         </Reveal>
-        <div className="usecase-grid">
+        <UseCaseTicker />
+        <div className="audience-grid">
           {[
-            {
-              Icon: Building2,
-              title: "Finance & treasury",
-              text: "Understand receipts, outgoing transfers and fees. Read an address ledger with explicit net changes.",
-            },
-            {
-              Icon: Code2,
-              title: "Product developers",
-              text: "Build on four focused read APIs. Get consistent USDC amounts without rebuilding event matching.",
-            },
-            {
-              Icon: Wallet,
-              title: "Payment operations",
-              text: "Investigate a transaction, follow its participants and explain the underlying protocol evidence.",
-            },
-          ].map(({ Icon, title, text }) => (
-            <Reveal key={title} className="usecase">
-              <Icon size={23} strokeWidth={1.5} />
-              <h3>{title}</h3>
-              <p>{text}</p>
-            </Reveal>
+            ["Finance & accounting teams", "Books that match the chain."],
+            ["Wallets & dashboards", "Correct balances and history."],
+            [
+              "Analysts & researchers",
+              "Real USDC volume, not inflated volume.",
+            ],
+            [
+              "Developers",
+              "A clean API instead of custom event-matching code.",
+            ],
+          ].map(([a, b]) => (
+            <article key={a}>
+              <h3>{a}</h3>
+              <p>{b}</p>
+            </article>
           ))}
         </div>
       </section>
-      <Reveal className="verification-band">
-        <div>
-          <span className="eyebrow">TRUST THE EVIDENCE, NOT A BADGE.</span>
-          <h2>Accounting you can inspect.</h2>
-          <p>
-            Real validation runs. Explicit block ranges. Visible mismatches.
+      <section className="landing-section getting-started" id="get-started">
+        <Reveal className="section-intro">
+          <span className="eyebrow">07 / GET STARTED IN MINUTES</span>
+          <h2>
+            Try it now.
             <br />
-            No hidden gaps, and no claims beyond the sample checked.
+            <span>No database needed.</span>
+          </h2>
+          <p>
+            Open <code>http://127.0.0.1:3000</code>. Without a <code>.env</code>
+            , it runs on clearly labeled demo data. Add your Arc RPC and
+            Supabase details to go live on Mainnet.
           </p>
+          <p>
+            Ready for production? Deploy to Railway with the included runbook.
+          </p>
+          <a className="text-link" href={`${repo}/blob/master/docs/railway.md`}>
+            Read the Railway guide <ArrowUpRight size={15} />
+          </a>
+        </Reveal>
+        <div className="install-terminal">
+          <div className="terminal-top">
+            <span>
+              <i />
+              <i />
+              <i /> Your terminal
+            </span>
+            <CopyCode value={"npm ci\nnpm run dev"} label="Copy commands" />
+          </div>
+          <pre>
+            <span>$</span> npm ci{"\n"}
+            <span>$</span> npm run dev
+          </pre>
+          <div className="terminal-output">
+            <Check size={14} /> Ready on localhost:3000
+            <small>Clone the repository first · Node.js 22.16+</small>
+          </div>
         </div>
-        <Link className="outline-link" href="/validation">
-          View validation <ArrowUpRight size={16} />
-        </Link>
-      </Reveal>
-      <Reveal className="landing-bottom">
-        <span className="eyebrow">ARCLEDGER</span>
-        <h2>
-          Follow a transaction.
-          <br />
-          <span>Find the clarity.</span>
-        </h2>
-        <Link className="solid-link" href="/explorer">
-          Explore the ledger <ArrowRight size={17} />
-        </Link>
-        <p>No account. No wallet. Just the ledger.</p>
-      </Reveal>
+      </section>
+      <section className="landing-section honest-section" id="honest">
+        <Reveal className="section-intro">
+          <span className="eyebrow">08 / HONEST BY DESIGN</span>
+          <h2>
+            We tell you exactly
+            <br />
+            <span>what’s proven.</span>
+          </h2>
+        </Reveal>
+        <div className="honest-claims">
+          {[
+            "Validation shows its exact block range and completion time.",
+            "“Zero mismatches” means no failed checks in that sample. It is not a lifetime audit.",
+            "Demo data is always labeled and never replaces a failed Mainnet connection.",
+            "Validator rewards and other non-event balance changes are out of scope.",
+            "This demo uses a 400 MB rolling database budget. Older complete histories expire; the explorer shows the retained coverage.",
+          ].map((t) => (
+            <div key={t}>
+              <Check size={17} />
+              <ScrollWords text={t} />
+            </div>
+          ))}
+        </div>
+      </section>
+      <section className="landing-section faq-section">
+        <Reveal className="section-intro">
+          <span className="eyebrow">09 / A FEW ANSWERS</span>
+          <h2>Clear by design.</h2>
+        </Reveal>
+        <FAQ />
+      </section>
+      <section className="landing-final magnetic-banner">
+        <Reveal>
+          <span className="eyebrow">ARCLEDGER</span>
+          <h2>
+            Stop guessing.
+            <br />
+            <span>Start reconciling.</span>
+          </h2>
+          <p>The accounting layer Arc USDC has been missing.</p>
+          <div className="landing-actions">
+            <MagneticLink href="/explorer">View Live Demo</MagneticLink>
+            <MagneticLink
+              href={`${repo}/blob/master/docs/railway.md`}
+              secondary
+            >
+              Deploy to Railway
+            </MagneticLink>
+            <Link href={`${repo}#readme`} className="text-link">
+              Read the Docs <ArrowUpRight size={15} />
+            </Link>
+          </div>
+        </Reveal>
+      </section>
     </Enter>
   );
 }

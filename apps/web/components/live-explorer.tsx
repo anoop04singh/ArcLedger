@@ -11,6 +11,7 @@ import {
   Search,
   Check,
 } from "lucide-react";
+import { RetentionNotice } from "./retention-notice";
 import type { PublicStatus } from "@arcledger/types";
 import { short } from "@/lib/format";
 export function LiveExplorer({ initial }: { initial: PublicStatus | null }) {
@@ -169,6 +170,10 @@ export function LiveExplorer({ initial }: { initial: PublicStatus | null }) {
           </div>
         ))}
       </div>
+      <RetentionNotice
+        retention={data?.retention}
+        startBlock={data?.startBlock ?? null}
+      />
       <section className="glass transaction-feed">
         <div className="feed-heading">
           <div>

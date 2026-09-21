@@ -1,3 +1,4 @@
+import { ScrollHeader } from "@/components/landing-motion";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
@@ -30,7 +31,7 @@ export default function RootLayout({
         <a className="skip-link" href="#main">
           Skip to content
         </a>
-        <header className="header">
+        <ScrollHeader>
           <Link href="/" className="brand" aria-label="ArcLedger home">
             <span className="brand-mark">
               a<span />
@@ -54,16 +55,36 @@ export default function RootLayout({
             <span />
             Arc Mainnet
           </span>
-        </header>
+        </ScrollHeader>
         <main id="main">{children}</main>
-        <footer>
+        <footer className="site-footer">
           <Link href="/" className="footer-brand">
-            ArcLedger <span>One dollar. One ledger.</span>
+            ArcLedger <span>One ledger for Arc USDC.</span>
           </Link>
-          <span>Built for Arc. Precise by design.</span>
-          <Link href="/status">
-            System status <span className="status-ring" />
-          </Link>
+          <nav aria-label="Footer navigation">
+            {[
+              ["MIT License", "LICENSE"],
+              ["GitHub", ""],
+              ["Docs", "#readme"],
+              ["Architecture", "docs/architecture.md"],
+              ["API", "docs/api.md"],
+              ["Railway Guide", "docs/railway.md"],
+            ].map(([label, path]) => (
+              <a
+                key={label}
+                href={
+                  "https://github.com/anoop04singh/ArcLedger" +
+                  (path.startsWith("#")
+                    ? path
+                    : path
+                      ? "/blob/master/" + path
+                      : "")
+                }
+              >
+                {label}
+              </a>
+            ))}
+          </nav>
         </footer>
       </body>
     </html>

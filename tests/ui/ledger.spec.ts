@@ -11,7 +11,10 @@ test("interactive normalization and explorer refresh, filters, and outage recove
   await expect(
     page.getByText("One audit record. Zero transfer balance change."),
   ).toBeVisible();
-  await page.getByRole("link", { name: "Open explorer", exact: true }).click();
+  await page
+    .getByRole("link", { name: "View Live Demo", exact: true })
+    .first()
+    .click();
   await expect(page.locator(".feed-row")).toHaveCount(3);
   await page.getByRole("button", { name: "Pause live updates" }).click();
   await expect(page.getByText("Refresh paused", { exact: true })).toBeVisible();
@@ -61,7 +64,9 @@ test("desktop search, address history, canonical explanation, and status", async
   ).toHaveCSS("opacity", "1");
   await page.screenshot({ path: ".local/landing-desktop.png", fullPage: true });
   await expect(
-    page.getByRole("heading", { name: /One movement\.\s*Counted once\./ }),
+    page.getByRole("heading", {
+      name: /Every USDC movement on Arc\.\s*Counted once\./,
+    }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Search ledger" }).click();
   await expect(page.locator("#search-error")).toContainText("Enter a valid");
@@ -186,4 +191,77 @@ test("explain metadata and database state stay explicit", async ({ page }) => {
   await expect(
     page.getByText("Latest Arc block", { exact: true }),
   ).toBeVisible();
+});
+
+test("landing copy, API examples, copy controls, FAQ and reduced-motion layout", async ({
+  page,
+  context,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/");
+  await expect(page).toHaveTitle("ArcLedger: One Ledger for Arc USDC");
+  await expect(
+    page.getByRole("heading", { name: /Every USDC movement on Arc/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Star on GitHub" }),
+  ).toHaveAttribute("href", "https://github.com/anoop04singh/ArcLedger");
+  await page
+    .getByRole("button", { name: "GET /v1/tx/:txHash", exact: false })
+    .click();
+  await expect(page.locator(".api-json pre")).toContainText(
+    "duplicateRepresentationsRemoved",
+  );
+  await page
+    .getByRole("button", { name: "Copy endpoint", exact: true })
+    .click();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        navigator.clipboard
+          .readText()
+          .then((text) => text.replace(/\r\n/g, "\n")),
+      ),
+    )
+    .toBe("GET /v1/tx/:txHash");
+  await page
+    .getByRole("button", { name: "Copy commands", exact: true })
+    .click();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        navigator.clipboard
+          .readText()
+          .then((text) => text.replace(/\r\n/g, "\n")),
+      ),
+    )
+    .toBe("npm ci\nnpm run dev");
+  const faq = page.getByRole("button", {
+    name: "How much history does the live demo keep?",
+  });
+  await faq.click();
+  await expect(faq).toHaveAttribute("aria-expanded", "true");
+  await expect(
+    page.getByRole("region", {
+      name: "How much history does the live demo keep?",
+    }),
+  ).toContainText("400 MB");
+  await faq.press("Enter");
+  await expect(faq).toHaveAttribute("aria-expanded", "false");
+  await page.setViewportSize({ width: 390, height: 844 });
+  for (const selector of [
+    ".signature-scene",
+    ".representation-pair",
+    ".api-playground",
+    ".install-terminal",
+    ".faq-list",
+  ]) {
+    await page.locator(selector).scrollIntoViewIfNeeded();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 1,
+      ),
+    ).toBe(true);
+  }
 });
