@@ -1,6 +1,6 @@
 # Deploy ArcLedger to Railway
 
-The repository is prepared for deployment; no service has been deployed by the coding agent. You publish the repository and perform these steps. All four services run from the **repository root**, using the root Dockerfile. Do not set a service root to `apps/web` or `apps/api`: they depend on shared workspace packages. The image includes the TypeScript runtime and builds Next.js without database credentials.
+The four services were deployed to the existing ArcLedger Railway project on 2026-09-21, following explicit authorization. GitHub `master` is connected for automatic deployment. These instructions also cover reproducing the setup. All four services run from the **repository root**, using the root Dockerfile. Do not set a service root to `apps/web` or `apps/api`: they depend on shared workspace packages. The image includes the TypeScript runtime and builds Next.js without database credentials.
 
 ## 1. Prepare Supabase
 
@@ -73,3 +73,15 @@ To select a different sample, set `VALIDATION_START_BLOCK` and `VALIDATION_END_B
 - Secrets: `.env`, local test databases, certificates and build caches are excluded from Git/Docker contexts. Use Railway's variable UI; do not bake credentials into the image.
 
 Railway references: [shared monorepos](https://docs.railway.com/deployments/monorepo), [custom start commands](https://docs.railway.com/deployments/start-command), [private networking](https://docs.railway.com/networking/private-networking), [service domains](https://docs.railway.com/networking/domains/working-with-domains).
+
+## Active deployment (2026-09-21)
+
+- Website: https://web-production-e1571d.up.railway.app
+- Explorer: https://web-production-e1571d.up.railway.app/explorer
+- Public API: https://api-production-0b89.up.railway.app
+- Source: https://github.com/anoop04singh/ArcLedger (`master`)
+- Services: `web`, `api`, `indexer`, `ledger`, one replica each in Singapore near the existing Asian Supabase database.
+- API pre-deploy command: `npm run db:migrate`; healthcheck `/health`. Web healthcheck `/`.
+- Web uses Railway private networking. Backend workers reference the API service variables; database credentials remain off the web service.
+- Initial production checks confirmed Mainnet mode, healthy database/RPC, advancing raw checkpoints and real recent transaction data. The preserved historical backlog is still syncing; no checkpoint was reset or skipped. Use `/v1/status` for current lag and pending normalization.
+- The lockfile includes Tailwind native packages for Linux, verified by the Railway Docker build.

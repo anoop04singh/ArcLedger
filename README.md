@@ -4,7 +4,7 @@
 
 Arc exposes one USDC balance through an 18-decimal native representation and a 6-decimal ERC-20 interface. Counting both Transfer streams doubles economic activity. ArcLedger retains raw evidence, matches representations one-to-one, counts native movements once, and accounts for receipt-derived gas fees separately. ERC-20 self transfers retain a zero-balance-change audit record.
 
-The five-part MVP includes raw ingestion, Supabase/PostgreSQL persistence, a reusable normalizer, exact address accounting, four public read APIs, an explorer UI, independent Mainnet validation, and Railway deployment assets. **GitHub publication and deployment are user-operated and have not been performed.**
+The five-part MVP includes raw ingestion, Supabase/PostgreSQL persistence, a reusable normalizer, exact address accounting, four public read APIs, an explorer UI, independent Mainnet validation, and Railway deployment assets. Published to [GitHub](https://github.com/anoop04singh/ArcLedger) and deployed on Railway. Open the [website](https://web-production-e1571d.up.railway.app) or [live explorer](https://web-production-e1571d.up.railway.app/explorer). The explorer reports actual indexed coverage and lag; deployment does not imply the historical backlog is caught up.
 
 ## Architecture
 

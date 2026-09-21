@@ -24,7 +24,7 @@ export default async function TransactionPage({
   const m = tx.movements[0];
   return (
     <Enter className="detail">
-      <Link className="back-link" href="/">
+      <Link className="back-link" href="/explorer">
         <ArrowLeft size={15} /> Back to explorer
       </Link>
       <ModeNotice mode={tx.mode} />
@@ -35,14 +35,14 @@ export default async function TransactionPage({
             FINAL <Check size={12} />
           </Pill>
         </div>
-        <div className="tx-amount">
+        <h1 className="tx-amount">
           {tx.movements.length === 1
             ? formatUSDC(m.amount)
             : tx.movements.length === 0
               ? "No transfer"
               : `${tx.movements.length} movements`}
           {tx.movements.length === 1 && <span> USDC</span>}
-        </div>
+        </h1>
         {m && tx.movements.length === 1 && (
           <div className="tx-parties">
             <Link className="mono" href={`/address/${m.from}`}>

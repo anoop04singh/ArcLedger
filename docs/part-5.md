@@ -60,6 +60,6 @@ Set `VALIDATION_START_BLOCK=21865109` and `VALIDATION_END_BLOCK=21865116` to rep
 - Implemented and locally checked: raw Mainnet ingestion, Supabase persistence, checkpoints/recovery, native/ERC-20 parsing, precision conversion, duplicate matching, canonical transfers, fees, address ledger, current RPC balances, explain API, landing/address/transaction/status/validation pages, independent validation and persisted results.
 - Zero known mismatches in the documented eight-block sample; this is not a full-chain accounting certification.
 - Prepared: production build, Dockerfile, four-service Railway instructions, backend-only secrets and verified TLS.
-- **User pending:** publish GitHub repository, deploy Railway services/domains, verify sustained deployment health and refresh validation for recent production blocks.
-- Docker container execution was not tested because the local Docker daemon was unavailable. The same production build and start processes were tested directly on Node.js.
+- **Deployment update (2026-09-21):** GitHub publication and four Railway services/domains completed with user authorization; see [active deployment](railway.md#active-deployment-2026-09-21). Historical backfill is still syncing. Sustained near-head throughput and a fresh validation sample remain operational follow-up checks.
+- Docker images now build and run on Railway. Local build and start processes were also tested directly on Node.js.
 - Optional webhooks remain unused; no contract or additional product features were added.

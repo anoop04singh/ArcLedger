@@ -34,7 +34,7 @@ export default async function AddressPage({
   }
   return (
     <Enter className="detail">
-      <Link className="back-link" href="/">
+      <Link className="back-link" href="/explorer">
         <ArrowLeft size={15} /> Back to explorer
       </Link>
       <ModeNotice mode={ledger.mode} />
