@@ -85,6 +85,28 @@ export function createApp(
       s.normalizationWarnings === 0;
     return c.json({
       ...s,
+      ...(c.req.query("includeRecent") === "true"
+        ? {
+            recentTransactions: ((await store.recent?.()) ?? []).map((tx) => ({
+              hash: tx.hash,
+              blockNumber: tx.blockNumber,
+              timestamp: tx.timestamp,
+              from: tx.sender,
+              to: tx.movements.length === 1 ? tx.movements[0].to : null,
+              amount: formatUSDC(
+                tx.movements
+                  .filter((m) => m.kind !== "self")
+                  .reduce((sum, m) => sum + BigInt(m.amount), 0n),
+                6,
+              ),
+              fee: formatUSDC(tx.fee, 6),
+              movements: tx.movements.length,
+              status: tx.status,
+              duplicates: tx.evidence.filter((e) => e.disposition === "matched")
+                .length,
+            })),
+          }
+        : {}),
       database,
       rpc,
       state:

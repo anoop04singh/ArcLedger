@@ -57,3 +57,7 @@ Summary amount is explicitly **total canonical transfer volume**, not a sender's
 ## Database health (Part 4)
 
 `GET /v1/status` includes `database: "healthy"` after a successful server-side `SELECT NOW()`, or `"not-configured"` in demo mode. A connection failure returns 503 with `database: "unavailable"` and a sanitized error. No database credentials or server identity are returned.
+
+### Recent explorer activity
+
+`GET /v1/status?includeRecent=true` includes `recentTransactions`, at most 12 completed canonical projections ordered by block and transaction index descending. Entries contain hash, block, timestamp, fee payer (`from`), a single movement's recipient when applicable, non-self canonical transfer volume, exact USDC fee, movement count, receipt status and matched duplicate count. `from` is the transaction submitter, which can be a relayer; inspect the transaction for actual transfer participants. Without this query parameter, the response remains unchanged. Demo responses remain explicitly marked. The UI polls `/api/explorer`, its fixed same-origin backend relay, every 15 seconds while visible and unpaused.

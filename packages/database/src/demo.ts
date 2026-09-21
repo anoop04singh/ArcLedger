@@ -73,6 +73,9 @@ export function demoTransactions() {
   );
 }
 export class DemoStore implements LedgerStore {
+  async recent() {
+    return demoTransactions();
+  }
   mode = "demo" as const;
   readonly transactions = demoTransactions();
   async ledger(

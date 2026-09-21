@@ -1,19 +1,67 @@
 import { test, expect } from "@playwright/test";
 const ADDRESS = "0x91bd00000000000000000000000000000000a821";
 const HASH = `0x${"a2".repeat(32)}`;
+test("interactive normalization and explorer refresh, filters, and outage recovery", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "Self transfer", exact: true })
+    .click();
+  await expect(
+    page.getByText("One audit record. Zero transfer balance change."),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Open explorer", exact: true }).click();
+  await expect(page.locator(".feed-row")).toHaveCount(3);
+  await page.getByRole("button", { name: "Pause live updates" }).click();
+  await expect(page.getByText("Refresh paused", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Fee only", exact: true }).click();
+  await expect(page.getByText("No transactions in this view")).toBeVisible();
+  await page.getByRole("button", { name: "All activity", exact: true }).click();
+  const snapshot = await (await page.request.get("/api/explorer")).json();
+  const newTx = {
+    ...snapshot.recentTransactions[0],
+    hash: `0x${"dd".repeat(32)}`,
+    blockNumber: "291295",
+  };
+  await page.route(
+    "**/api/explorer",
+    (route) =>
+      route.fulfill({
+        json: {
+          ...snapshot,
+          recentTransactions: [newTx, ...snapshot.recentTransactions],
+        },
+      }),
+    { times: 1 },
+  );
+  await page.getByRole("button", { name: "Refresh explorer" }).click();
+  await expect(page.locator(".feed-row")).toHaveCount(4);
+  await page.route(
+    "**/api/explorer",
+    (route) => route.fulfill({ status: 503, json: { error: "Unavailable" } }),
+    { times: 1 },
+  );
+  await page.getByRole("button", { name: "Refresh explorer" }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Live refresh unavailable" }),
+  ).toBeVisible();
+  await expect(page.locator(".feed-row")).toHaveCount(4);
+  await page.getByRole("button", { name: "Refresh explorer" }).click();
+  await expect(page.locator(".feed-row")).toHaveCount(3);
+});
 test("desktop search, address history, canonical explanation, and status", async ({
   page,
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
-  await expect(page.locator(".home, .detail:not(.loading)")).toHaveCSS(
-    "opacity",
-    "1",
-  );
+  await expect(
+    page.locator(".home, .detail:not(.loading), .explorer-page"),
+  ).toHaveCSS("opacity", "1");
   await page.screenshot({ path: ".local/landing-desktop.png", fullPage: true });
   await expect(
-    page.getByRole("heading", { name: "ArcLedger", exact: true }),
+    page.getByRole("heading", { name: /One movement\.\s*Counted once\./ }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Search ledger" }).click();
   await expect(page.locator("#search-error")).toContainText("Enter a valid");
@@ -35,10 +83,9 @@ test("desktop search, address history, canonical explanation, and status", async
       "1 canonical movement · 1 duplicate representations matched",
     ),
   ).toBeVisible();
-  await expect(page.locator(".home, .detail:not(.loading)")).toHaveCSS(
-    "opacity",
-    "1",
-  );
+  await expect(
+    page.locator(".home, .detail:not(.loading), .explorer-page"),
+  ).toHaveCSS("opacity", "1");
   await page.screenshot({
     path: ".local/transaction-desktop.png",
     fullPage: true,
@@ -60,12 +107,12 @@ test("mobile layout, unknown records, and sample navigation", async ({
     `/tx/${HASH}`,
     "/status",
     "/validation",
+    "/explorer",
   ]) {
     await page.goto(path);
-    await expect(page.locator(".home, .detail:not(.loading)")).toHaveCSS(
-      "opacity",
-      "1",
-    );
+    await expect(
+      page.locator(".home, .detail:not(.loading), .explorer-page"),
+    ).toHaveCSS("opacity", "1");
     await page.screenshot({
       path: `.local/mobile-${path.split("/")[1] || "home"}.png`,
       fullPage: true,

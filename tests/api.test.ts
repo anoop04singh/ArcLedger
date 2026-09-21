@@ -3,6 +3,23 @@ import { createApp } from "../apps/api/src/app.js";
 import { DemoStore, DEMO_ADDRESS, DEMO_HASH } from "@arcledger/database";
 const app = createApp(new DemoStore());
 describe("Part 3 public read API", () => {
+  it("returns optional recent transactions with exact decimal fees and explicit demo mode", async () => {
+    const result = await (
+      await app.request("/v1/status?includeRecent=true")
+    ).json();
+    expect(result.mode).toBe("demo");
+    expect(result.recentTransactions).toHaveLength(3);
+    expect(result.recentTransactions[0]).toMatchObject({
+      hash: DEMO_HASH,
+      amount: "10.000000",
+      fee: "0.000420",
+      duplicates: 1,
+      status: "success",
+    });
+    expect(
+      (await (await app.request("/v1/status")).json()).recentTransactions,
+    ).toBeUndefined();
+  });
   it("reports demo mode without claiming healthy Mainnet", async () => {
     const s = await (await app.request("/v1/status")).json();
     expect(s).toMatchObject({

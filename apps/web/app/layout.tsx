@@ -38,7 +38,7 @@ export default function RootLayout({
             ArcLedger
           </Link>
           <nav aria-label="Main navigation">
-            <Link href="/">Explorer</Link>
+            <Link href="/explorer">Explorer</Link>
             <Link href="/status">Network status</Link>
             <Link href="/validation">Validation</Link>
             <a

@@ -41,6 +41,7 @@ async function request<T>(path: string): Promise<T> {
   return response.json();
 }
 export const getStatus = () => request<PublicStatus>("/status");
+export const getExplorer = () => request<PublicStatus>("/status?includeRecent=true");
 export const getAddress = async (
   address: string,
   cursor?: string,

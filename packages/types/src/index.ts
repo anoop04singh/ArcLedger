@@ -190,6 +190,18 @@ export type PublicLedger = {
   nextCursor: string | null;
 };
 export type PublicStatus = Omit<LedgerStatus, "latestIndexedBlock" | "lag"> & {
+  recentTransactions?: {
+    hash: Hex;
+    blockNumber: string;
+    timestamp: string;
+    from: Hex;
+    to: Hex | null;
+    amount: string;
+    fee: string;
+    movements: number;
+    status: "success" | "reverted";
+    duplicates: number;
+  }[];
   network: "arc-mainnet";
   status: "healthy" | "degraded" | "demo";
   database: "healthy" | "not-configured";

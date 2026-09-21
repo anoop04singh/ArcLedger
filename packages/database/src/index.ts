@@ -28,6 +28,7 @@ export type LegacyBlockRecord = {
   transactions: ExplainedTransaction[];
 };
 export interface LedgerStore {
+  recent?(): Promise<ExplainedTransaction[]>;
   mode: "demo" | "mainnet";
   health?(): Promise<{ database: "healthy"; checkedAt: string }>;
   transaction(hash: string): Promise<ExplainedTransaction | null>;
@@ -46,6 +47,13 @@ export interface SqlClient {
   exec?(sql: string): Promise<unknown>;
 }
 export class PostgresStore implements LedgerStore {
+  async recent(): Promise<ExplainedTransaction[]> {
+    const { rows } = await this.db.query(
+      "SELECT explanation FROM transactions WHERE chain_id=$1 AND ledger_version=1 AND explanation IS NOT NULL ORDER BY block_number DESC,transaction_index DESC,tx_hash DESC LIMIT 12",
+      [ARC_MAINNET.chainId],
+    );
+    return rows.map((r) => r.explanation);
+  }
   mode = "mainnet" as const;
   constructor(readonly db: SqlClient) {}
   health() {

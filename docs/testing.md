@@ -128,3 +128,9 @@ Accounting reconciliation remains explicitly not-run, and optional webhook deliv
 - Root Dockerfile and [Railway instructions](railway.md) are supplied. Docker execution could not be checked because the local daemon was unavailable; production Node build/start processes were exercised directly. No GitHub push, blockchain transaction, contract deployment, Sites deployment, or Railway deployment occurred.
 
 The Supabase sample is retained, and background indexing was deliberately stopped after bounded checks. A stale heartbeat/high lag in the local preview is truthful. Continuous production health and fresh validation must be checked after the user deploys and runs both workers.
+
+## Landing and live explorer
+
+The homepage explains normalization, fee accounting, evidence retention and use cases through a Motion-powered interactive example. `/explorer` provides search, current chain/indexed stats and the latest 12 normalized transactions. `GET /v1/status?includeRecent=true` adds this bounded feed without introducing a fifth core endpoint. The browser polls a same-origin server relay every 15 seconds, pauses in hidden tabs, supports manual pause/refresh, retains its last snapshot on errors and labels demo/backfill states explicitly.
+
+Frontend regression checks: 66 unit/integration tests and five browser tests pass. The new interaction test covers illustrative self transfers, recent-feed filters, refreshed records and outage recovery. Live mode reads PostgreSQL/RPC; no synthetic transactions are inserted into Mainnet feeds.

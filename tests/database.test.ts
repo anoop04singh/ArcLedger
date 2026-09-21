@@ -70,6 +70,11 @@ it("stores full raw data and exact failed-transaction fees atomically; replay is
     await projectPending(db);
     await projectPending(db);
     expect((await store.status()).canonicalTransfers).toBe(1);
+    const recent = await store.recent();
+    expect(recent.map((tx) => tx.hash)).toEqual([
+      b.transactions[1].transaction.hash,
+      b.transactions[0].transaction.hash,
+    ]);
     expect((await store.status()).pendingNormalization).toBe(0);
     expect((await store.address(A, 20, 0)).sent).toBe("10000000000000000000");
     expect(
