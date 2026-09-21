@@ -863,6 +863,8 @@ footer > a:last-child {
 }
 .canonical-result strong {
   display: block;
+  overflow-wrap: anywhere;
+  min-width: 0;
   font-size: 30px;
   font-weight: 500;
   letter-spacing: -1px;
