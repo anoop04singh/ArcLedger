@@ -40,6 +40,7 @@ export default function RootLayout({
           <nav aria-label="Main navigation">
             <Link href="/">Explorer</Link>
             <Link href="/status">Network status</Link>
+            <Link href="/validation">Validation</Link>
             <a
               className="docs-link"
               href="https://docs.arc.io/arc/references/usdc-system-events"

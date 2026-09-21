@@ -7,10 +7,13 @@ test("desktop search, address history, canonical explanation, and status", async
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
-  await expect(page.locator(".home, .detail")).toHaveCSS("opacity", "1");
+  await expect(page.locator(".home, .detail:not(.loading)")).toHaveCSS(
+    "opacity",
+    "1",
+  );
   await page.screenshot({ path: ".local/landing-desktop.png", fullPage: true });
   await expect(
-    page.getByRole("heading", { name: "One dollar. One ledger." }),
+    page.getByRole("heading", { name: "ArcLedger", exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Search ledger" }).click();
   await expect(page.locator("#search-error")).toContainText("Enter a valid");
@@ -32,7 +35,10 @@ test("desktop search, address history, canonical explanation, and status", async
       "1 canonical movement · 1 duplicate representations matched",
     ),
   ).toBeVisible();
-  await expect(page.locator(".home, .detail")).toHaveCSS("opacity", "1");
+  await expect(page.locator(".home, .detail:not(.loading)")).toHaveCSS(
+    "opacity",
+    "1",
+  );
   await page.screenshot({
     path: ".local/transaction-desktop.png",
     fullPage: true,
@@ -41,18 +47,25 @@ test("desktop search, address history, canonical explanation, and status", async
   await expect(
     page.getByText("Local demonstration", { exact: true }),
   ).toBeVisible();
-  await expect(
-    page.getByText("Balance reconciliation has not run"),
-  ).toBeVisible();
+  await expect(page.getByText("Validation has not run")).toBeVisible();
   expect(errors).toEqual([]);
 });
 test("mobile layout, unknown records, and sample navigation", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  for (const path of ["/", `/address/${ADDRESS}`, `/tx/${HASH}`, "/status"]) {
+  for (const path of [
+    "/",
+    `/address/${ADDRESS}`,
+    `/tx/${HASH}`,
+    "/status",
+    "/validation",
+  ]) {
     await page.goto(path);
-    await expect(page.locator(".home, .detail")).toHaveCSS("opacity", "1");
+    await expect(page.locator(".home, .detail:not(.loading)")).toHaveCSS(
+      "opacity",
+      "1",
+    );
     await page.screenshot({
       path: `.local/mobile-${path.split("/")[1] || "home"}.png`,
       fullPage: true,
@@ -71,5 +84,59 @@ test("mobile layout, unknown records, and sample navigation", async ({
   await page.goto(`/address/0x${"ff".repeat(20)}`);
   await expect(
     page.getByRole("heading", { name: "No indexed transactions" }),
+  ).toBeVisible();
+});
+
+test("load more appends stable cursor history, preserves rows on failure and retries", async ({
+  page,
+}) => {
+  await page.goto(`/address/${ADDRESS}?limit=1`);
+  await expect(page.locator(".transaction-row")).toHaveCount(1);
+  await page.route(
+    "**/api/ledger/**",
+    (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Temporary ledger outage" }),
+      }),
+    { times: 1 },
+  );
+  await page.getByRole("button", { name: "Load more" }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Temporary ledger outage" }),
+  ).toBeVisible();
+  await expect(page.locator(".transaction-row")).toHaveCount(1);
+  await page.getByRole("button", { name: "Load more" }).click();
+  await expect(page.locator(".transaction-row")).toHaveCount(3);
+  await expect(page.getByRole("button", { name: "Load more" })).toHaveCount(0);
+  await expect(page.getByRole("status")).toContainText(
+    "End of indexed history",
+  );
+});
+
+test("explain metadata and database state stay explicit", async ({ page }) => {
+  await page.goto(`/tx/${HASH}`);
+  await expect(page.locator(".normalization-metrics")).toContainText(
+    "Canonical source",
+  );
+  await expect(page.locator(".normalization-metrics")).toContainText(
+    "EIP-7708",
+  );
+  await expect(page.locator(".normalization-metrics")).toContainText(
+    "Matched records2",
+  );
+  await expect(page.locator(".normalization-metrics")).toContainText(
+    "Duplicate representations removed1",
+  );
+  await page.goto("/status");
+  await expect(
+    page
+      .locator(".status-metric")
+      .filter({ hasText: "Database" })
+      .getByText("NOT CONFIGURED", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Latest Arc block", { exact: true }),
   ).toBeVisible();
 });

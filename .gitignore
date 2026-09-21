@@ -10,3 +10,6 @@ playwright-report/
 *.log
 .local/
 .next-dev/
+*.crt
+*.pem
+*.key

@@ -1,67 +1,61 @@
-import { setTimeout as delay } from "node:timers/promises";
 import {
   ARC_MAINNET,
-  createArcClient,
+  createArcRpc,
   readMode,
-  verifyChain,
+  RpcUnavailableError,
 } from "@arcledger/arc-config";
-import { createPool, saveBlock } from "@arcledger/database";
-import { readFinalizedBlock } from "./ingest.js";
+import { createPool } from "@arcledger/database";
+import { readIndexerOptions, runIndexer } from "./worker.js";
 if (readMode() !== "mainnet")
-  throw new Error(
-    "Indexer requires ARCLEDGER_MODE=mainnet. Demo runs without an indexer.",
-  );
-const start = process.env.INDEXER_START_BLOCK ?? "0";
-if (!/^\d+$/.test(start))
-  throw new Error("INDEXER_START_BLOCK must be non-negative");
-const poll = Number(process.env.INDEXER_POLL_MS ?? 2000);
-if (!Number.isSafeInteger(poll) || poll < 250)
-  throw new Error("INDEXER_POLL_MS must be at least 250");
-const client = createArcClient();
-await verifyChain(client);
-const pool = createPool(),
-  db = await pool.connect();
-let stopping = false;
+  throw new Error("Indexer requires ARCLEDGER_MODE=mainnet");
+const options = readIndexerOptions();
+const controller = new AbortController();
 for (const signal of ["SIGINT", "SIGTERM"] as const)
-  process.on(signal, () => {
-    stopping = true;
-  });
+  process.once(signal, () => controller.abort());
+const pool = createPool();
+pool.on("error", () =>
+  console.error("Database connection lost; indexer will reconnect."),
+);
 try {
-  const {
-    rows: [lock],
-  } = await db.query("SELECT pg_try_advisory_lock($1,1) AS acquired", [
-    ARC_MAINNET.chainId,
-  ]);
-  if (!lock.acquired)
-    throw new Error("Another ArcLedger indexer owns this database");
-  while (!stopping) {
-    const {
-      rows: [state],
-    } = await db.query("SELECT latest_block FROM indexer_state WHERE id=1");
-    const next = state ? BigInt(state.latest_block) + 1n : BigInt(start);
-    const head = await client.getBlock({ blockTag: "finalized" });
-    if (next > head.number) {
-      await db.query(
-        "UPDATE indexer_state SET finalized_head=$1,updated_at=now() WHERE id=1",
-        [head.number.toString()],
-      );
-      await delay(poll);
-      continue;
-    }
-    const block = await readFinalizedBlock(client, next, head.number);
-    await db.query("BEGIN");
-    try {
-      await saveBlock(db, block, head.number.toString());
-      await db.query("COMMIT");
-    } catch (error) {
-      await db.query("ROLLBACK");
-      throw error;
-    }
-    console.log(
-      `Indexed finalized block ${next} (${block.transactions.length} receipts)`,
-    );
-  }
+  await runIndexer({
+    rpc: createArcRpc(),
+    options,
+    signal: controller.signal,
+    connect: async () => {
+      const db = await pool.connect();
+      let broken = false;
+      const failed = () => {
+        broken = true;
+      };
+      db.on("error", failed);
+      return {
+        db,
+        close: async () => {
+          try {
+            if (!broken)
+              await db.query("SELECT pg_advisory_unlock($1,1)", [
+                ARC_MAINNET.chainId,
+              ]);
+          } finally {
+            db.removeListener("error", failed);
+            db.release(true);
+          }
+        },
+      };
+    },
+    onProgress: (progress) =>
+      console.log(JSON.stringify({ event: "block_committed", ...progress })),
+    onRetry: (error) =>
+      console.error(
+        JSON.stringify({
+          event: "indexer_retry",
+          reason:
+            error instanceof RpcUnavailableError
+              ? error.message
+              : "Database or RPC snapshot unavailable; retrying from durable checkpoint.",
+        }),
+      ),
+  });
 } finally {
-  db.release();
   await pool.end();
 }

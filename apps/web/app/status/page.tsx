@@ -1,5 +1,5 @@
-import { Activity, ArrowUpRight, Check, Database, Radio } from "lucide-react";
-import { getStatus } from "@/lib/api";
+import { ArrowUpRight, Database, Radio } from "lucide-react";
+import { getStatus, ApiError } from "@/lib/api";
 import { Enter } from "@/components/motion";
 import { Failure, ModeNotice, Pill } from "@/components/ledger";
 export const dynamic = "force-dynamic";
@@ -10,6 +10,13 @@ export default async function StatusPage() {
   } catch (e) {
     return (
       <div className="detail">
+        {e instanceof ApiError && e.database && (
+          <section className="glass status-metric">
+            <span>Database</span>
+            <strong>{e.database.toUpperCase()}</strong>
+            <small>Live backend connection check failed</small>
+          </section>
+        )}
         <Failure message={(e as Error).message} />
       </div>
     );
@@ -22,6 +29,12 @@ export default async function StatusPage() {
         <p>Indexing health, normalization, and accounting integrity.</p>
       </div>
       <ModeNotice mode={s.mode} />
+      {(s.pendingNormalization ?? 0) > 0 && (
+        <p className="demo-notice">
+          {s.pendingNormalization} raw transactions await normalization.
+          Canonical totals currently cover processed projections only.
+        </p>
+      )}
       <section className="glass status-banner">
         <span className="icon-box">
           <Radio size={24} />
@@ -46,6 +59,46 @@ export default async function StatusPage() {
       </section>
       <section className="status-grid">
         {[
+          {
+            label: "Database",
+            value: s.database === "healthy" ? "HEALTHY" : "NOT CONFIGURED",
+            note:
+              s.mode === "demo"
+                ? "Demo mode does not use a database"
+                : "Live PostgreSQL connection check",
+          },
+          {
+            label: "Arc RPC",
+            value: s.rpc.toUpperCase().replace("-", " "),
+            note: "Fresh chain-head connectivity check",
+          },
+          {
+            label: "Latest Arc block",
+            value:
+              s.latestChainBlock === null
+                ? "—"
+                : Number(s.latestChainBlock).toLocaleString("en-US"),
+            note: "Current committed chain head",
+          },
+          ...(s.mode === "mainnet"
+            ? [
+                {
+                  label: "Raw transactions",
+                  value: s.rawTransactions ?? 0,
+                  note: "Full transaction and receipt payloads",
+                },
+                {
+                  label: "Raw events",
+                  value: s.rawEvents ?? 0,
+                  note: "All emitters retained for auditing",
+                },
+                {
+                  label: "Awaiting normalization",
+                  value: s.pendingNormalization ?? 0,
+                  note: `Raw coverage starts at ${s.rawCoverageStart ?? "—"}`,
+                },
+              ]
+            : []),
           {
             label: "Latest indexed block",
             value:
@@ -72,7 +125,9 @@ export default async function StatusPage() {
           {
             label: "Accounting mismatches",
             value: s.accountingMismatches ?? "—",
-            note: "Balance reconciliation has not run",
+            note: s.validationRun
+              ? `Sample ${s.validationRun.startBlock}–${s.validationRun.endBlock}`
+              : "Validation has not run",
           },
           {
             label: "Normalization warnings",
@@ -82,7 +137,15 @@ export default async function StatusPage() {
         ].map((item) => (
           <div className="glass status-metric" key={item.label}>
             <span>{item.label}</span>
-            <strong>{item.value}</strong>
+            <strong
+              className={
+                typeof item.value === "string" && /[a-z]/i.test(item.value)
+                  ? "metric-text"
+                  : undefined
+              }
+            >
+              {item.value}
+            </strong>
             <small>{item.note}</small>
           </div>
         ))}
@@ -92,24 +155,59 @@ export default async function StatusPage() {
           <h2>
             <Database size={19} /> Validation coverage
           </h2>
-          <Pill tone="neutral">NOT RUN</Pill>
+          <Pill tone={s.validation === "valid" ? "green" : "amber"}>
+            {s.validation.toUpperCase().replace("-", " ")}
+          </Pill>
         </div>
-        <p>
-          Indexing health is separate from accounting validation. This
-          foundation does not yet reconcile historical balances or validator
-          rewards. Mainnet accounting is not certified.
-        </p>
-        <div className="validation-items">
-          <span>
-            <Check size={15} /> Integer-only amount normalization
-          </span>
-          <span>
-            <Check size={15} /> One-to-one evidence matching
-          </span>
-          <span>
-            <Activity size={15} /> Balance reconciliation pending
-          </span>
-        </div>
+        {s.validationRun ? (
+          <>
+            <p>{s.validationRun.scope}</p>
+            <p>
+              Blocks {s.validationRun.startBlock}–{s.validationRun.endBlock} ·
+              Completed{" "}
+              {new Date(s.validationRun.completedAt).toLocaleString("en-US", {
+                timeZone: "UTC",
+              })}{" "}
+              UTC. These results describe this sample at validation time; they
+              do not certify later blocks.
+            </p>
+            <div className="validation-items">
+              <span>{s.validationRun.blocksScanned} blocks scanned</span>
+              <span>{s.validationRun.transactions} transactions</span>
+              <span>{s.validationRun.rawRecords} raw USDC records</span>
+              <span>
+                {s.validationRun.canonicalMovements} canonical movements
+              </span>
+              <span>{s.validationRun.duplicateRecords} matched duplicates</span>
+              <span>
+                {s.validationRun.status === "error"
+                  ? "—"
+                  : s.validationRun.feeMismatches}{" "}
+                fee mismatches
+              </span>
+            </div>
+            {s.validationRun.issues.length > 0 && (
+              <details>
+                <summary>
+                  Validation findings ({s.validationRun.issues.length})
+                </summary>
+                <ul>
+                  {s.validationRun.issues.map((issue, i) => (
+                    <li key={i} className="break-anywhere">
+                      {issue}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </>
+        ) : (
+          <p>
+            No Mainnet validation has run. Indexing health is separate from
+            accounting validation. No accounting result is asserted until a
+            sample is checked.
+          </p>
+        )}
         <a
           className="text-link"
           href="https://docs.arc.io/arc/references/usdc-system-events"

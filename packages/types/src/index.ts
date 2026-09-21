@@ -14,7 +14,7 @@ export type Movement = {
   from: Hex;
   to: Hex;
   amount: string;
-  kind: "transfer" | "mint" | "burn";
+  kind: "transfer" | "mint" | "burn" | "self";
   evidence: number[];
 };
 export type RawLog = {
@@ -55,8 +55,12 @@ export interface ChainAccountingAdapter {
 }
 export type LedgerStatus = {
   mode: "demo" | "mainnet";
+  pendingNormalization?: number;
   state: "demo" | "live" | "syncing" | "idle" | "stale";
   chainId: number;
+  rawEvents?: number;
+  rawTransactions?: number;
+  rawCoverageStart?: string | null;
   latestIndexedBlock: string | null;
   latestFinalizedBlock: string | null;
   lag: string | null;
@@ -66,11 +70,13 @@ export type LedgerStatus = {
   duplicatesRemoved: number;
   accountingMismatches: number | null;
   normalizationWarnings: number;
-  validation: "not-run";
+  validation: "not-run" | "valid" | "invalid" | "error";
+  validationRun?: ValidationRun | null;
 };
 export type AddressLedger = {
   address: Hex;
   mode: "demo" | "mainnet";
+  pendingNormalization?: number;
   balance: string | null;
   balanceBlock: string | null;
   received: string;
@@ -80,4 +86,133 @@ export type AddressLedger = {
   transactions: ExplainedTransaction[];
   nextOffset: number | null;
   coverageStart: string | null;
+};
+
+/** Raw JSON-RPC values stay hex strings; unknown provider fields are preserved. */
+export type RpcObject = Record<string, unknown>;
+export type RpcLog = RpcObject & {
+  address: Hex;
+  topics: Hex[];
+  data: Hex;
+  blockNumber: Hex;
+  blockHash: Hex;
+  transactionHash: Hex;
+  transactionIndex: Hex;
+  logIndex: Hex;
+  removed?: boolean;
+};
+export type RpcTransaction = RpcObject & {
+  hash: Hex;
+  blockHash: Hex;
+  blockNumber: Hex;
+  transactionIndex: Hex;
+  from: Hex;
+  to: Hex | null;
+  value: Hex;
+};
+export type RpcReceipt = RpcObject & {
+  transactionHash: Hex;
+  transactionIndex: Hex;
+  blockHash: Hex;
+  blockNumber: Hex;
+  from: Hex;
+  to: Hex | null;
+  status: Hex;
+  gasUsed: Hex;
+  effectiveGasPrice: Hex;
+  logs: RpcLog[];
+};
+export type RawTransactionRecord = {
+  transaction: RpcTransaction;
+  receipt: RpcReceipt;
+};
+export type RawBlockRecord = {
+  chainId: number;
+  number: string;
+  hash: Hex;
+  parentHash: Hex;
+  timestamp: string;
+  raw: RpcObject;
+  transactions: RawTransactionRecord[];
+  logs: RpcLog[];
+};
+export type AddressEntry = {
+  id: string;
+  address: Hex;
+  direction: "incoming" | "outgoing" | "self";
+  counterparty: Hex | null;
+  amount: string;
+  fee: string;
+  grossChange: string;
+  netChange: string;
+  type: "transfer" | "mint" | "burn" | "self" | "network_fee";
+  txHash: Hex;
+  blockNumber: string;
+  transactionIndex: number;
+  entryIndex: number;
+  timestamp: string;
+  final: true;
+  status: "success" | "reverted";
+};
+export type LedgerPosition = {
+  block: string;
+  transactionIndex: number;
+  hash: string;
+  entryIndex: number;
+};
+export type LedgerPage = {
+  entries: AddressEntry[];
+  snapshot: string;
+  hasMore: boolean;
+};
+export type AddressSummary = {
+  address: Hex;
+  mode: "demo" | "mainnet";
+  network: "arc-mainnet";
+  currency: "USDC";
+  balance: string | null;
+  balanceBlock: string | null;
+  received: string;
+  sent: string;
+  feesPaid: string;
+  transactions: number;
+  coverageStart: string | null;
+  pendingNormalization: number;
+};
+export type PublicLedger = {
+  address: Hex;
+  network: "arc-mainnet";
+  currency: "USDC";
+  mode: "demo" | "mainnet";
+  entries: (Omit<AddressEntry, "blockNumber"> & {
+    blockNumber: number | string;
+  })[];
+  nextCursor: string | null;
+};
+export type PublicStatus = Omit<LedgerStatus, "latestIndexedBlock" | "lag"> & {
+  network: "arc-mainnet";
+  status: "healthy" | "degraded" | "demo";
+  database: "healthy" | "not-configured";
+  rpc: "healthy" | "unavailable" | "not-configured";
+  latestChainBlock: number | string | null;
+  latestIndexedBlock: number | string | null;
+  lag: number | string | null;
+};
+
+export type ValidationRun = {
+  id: string;
+  startedAt: string;
+  completedAt: string;
+  startBlock: string;
+  endBlock: string;
+  blocksScanned: number;
+  transactions: number;
+  rawRecords: number;
+  duplicateRecords: number;
+  canonicalMovements: number;
+  feeMismatches: number;
+  accountingMismatches: number;
+  status: "valid" | "invalid" | "error";
+  scope: string;
+  issues: string[];
 };

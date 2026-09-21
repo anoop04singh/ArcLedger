@@ -57,6 +57,22 @@ export function formatUSDC(
     .padEnd(minimumDecimals, "0");
   return `${sign}${abs / scale}${fraction ? `.${fraction}` : ""}`;
 }
+export function canonicalSource(
+  tx: ExplainedTransaction,
+): "eip7708" | "erc20-self" | "mixed" | null {
+  const sources = new Set(
+    tx.evidence
+      .filter((e) => e.disposition === "canonical")
+      .map((e) => e.source),
+  );
+  return sources.size > 1
+    ? "mixed"
+    : sources.has("native")
+      ? "eip7708"
+      : sources.has("erc20")
+        ? "erc20-self"
+        : null;
+}
 export class ArcAccountingAdapter implements ChainAccountingAdapter {
   normalizeBalance(value: bigint) {
     if (value < 0n) throw new Error("Negative balance");
@@ -117,7 +133,7 @@ export class ArcAccountingAdapter implements ChainAccountingAdapter {
     const available = new Map<string, Movement[]>();
     const key = (e: Evidence) => `${e.from}:${e.to}:${e.amount}`;
     for (const e of evidence.filter((e) => e.source === "native")) {
-      if (e.amount === "0" || e.from === e.to) {
+      if (e.amount === "0") {
         e.disposition = "no-movement";
         continue;
       }
@@ -127,11 +143,13 @@ export class ArcAccountingAdapter implements ChainAccountingAdapter {
         to: e.to,
         amount: e.amount,
         kind:
-          e.from === ARC.zeroAddress
-            ? "mint"
-            : e.to === ARC.zeroAddress
-              ? "burn"
-              : "transfer",
+          e.from === e.to
+            ? "self"
+            : e.from === ARC.zeroAddress
+              ? "mint"
+              : e.to === ARC.zeroAddress
+                ? "burn"
+                : "transfer",
         evidence: [e.logIndex],
       };
       e.disposition = "canonical";
@@ -139,7 +157,7 @@ export class ArcAccountingAdapter implements ChainAccountingAdapter {
       available.set(key(e), [...(available.get(key(e)) ?? []), m]);
     }
     for (const e of evidence.filter((e) => e.source === "erc20")) {
-      if (e.amount === "0" || e.from === e.to) {
+      if (e.amount === "0") {
         e.disposition = "no-movement";
         continue;
       }
@@ -147,6 +165,18 @@ export class ArcAccountingAdapter implements ChainAccountingAdapter {
       if (m) {
         m.evidence.push(e.logIndex);
         e.disposition = "matched";
+      } else if (e.from === e.to) {
+        // Arc deliberately emits no native system log for a self-transfer.
+        // Retain the ERC-20 record for audit, with zero balance movement.
+        e.disposition = "canonical";
+        movements.push({
+          id: `${tx.hash}:${e.logIndex}`,
+          from: e.from,
+          to: e.to,
+          amount: e.amount,
+          kind: "self",
+          evidence: [e.logIndex],
+        });
       } else
         warnings.push(
           `ERC-20 log ${e.logIndex} has no matching native evidence; excluded from economic totals.`,
@@ -161,9 +191,14 @@ export class ArcAccountingAdapter implements ChainAccountingAdapter {
       status: tx.status,
       finality: "finalized",
       fee: this.calculateFee(tx).toString(),
-      movements,
+      movements: movements.sort((a, b) => a.evidence[0] - b.evidence[0]),
       evidence,
       warnings,
     };
   }
 }
+export {
+  normalizeArcTransaction,
+  constructAddressEntries,
+  publicEntry,
+} from "./ledger.js";

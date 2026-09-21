@@ -1,63 +1,102 @@
 # ArcLedger
 
-**One dollar. One ledger.** The accounting layer for Arc USDC.
+**The accounting layer for Arc USDC.** Normalize native transfers, ERC-20 activity and gas into one canonical ledger.
 
-Part 1 foundation: a local-first TypeScript monorepo with an Arc accounting adapter, exact normalization, PostgreSQL persistence, finalized-block ingestion, a read-only HTTP API, and a Next.js UI. This repository has not been deployed or published.
+Arc exposes one USDC balance through an 18-decimal native representation and a 6-decimal ERC-20 interface. Counting both Transfer streams doubles economic activity. ArcLedger retains raw evidence, matches representations one-to-one, counts native movements once, and accounts for receipt-derived gas fees separately. ERC-20 self transfers retain a zero-balance-change audit record.
 
-## Run locally
+The five-part MVP includes raw ingestion, Supabase/PostgreSQL persistence, a reusable normalizer, exact address accounting, four public read APIs, an explorer UI, independent Mainnet validation, and Railway deployment assets. **GitHub publication and deployment are user-operated and have not been performed.**
 
-Requires Node.js 22.16+ and npm. From the repository root:
+## Architecture
+
+```text
+Arc Mainnet RPC → raw indexer → Supabase PostgreSQL
+                                      ↑       ↓
+                              ledger projector
+                                      ↓
+                               Hono API → Next.js web
+
+Fresh Arc RPC + stored snapshot → independent validator → validation_runs
+```
+
+Raw data and its checkpoint commit together. Normalization is a separate atomic projection; parser failures never discard raw records. Values use BigInt/numeric(78,0), with exact decimal strings in public APIs. Current balances come from block-pinned eth_getBalance; history covers the indexed range.
+
+## Local demo
+
+Requires Node.js 22.16+ and npm:
 
 ```sh
-npm install
-# Copy .env.example to .env (PowerShell: Copy-Item .env.example .env)
+npm ci
 npm run dev
 ```
 
-Open http://127.0.0.1:3000. The API listens on http://127.0.0.1:3001. The default is explicitly labeled **demo mode**, with three synthetic transactions and no external dependencies. The sample links on the landing page open an address or a transaction. Unknown addresses have empty sample history and no fabricated balance.
+Open http://127.0.0.1:3000 (API: http://127.0.0.1:3001). With no .env, explicitly labeled demo data needs no database. An existing .env selecting Mainnet continues to use Mainnet.
 
-## Mainnet configuration
+## Mainnet and Supabase
 
-1. Start local PostgreSQL: `docker compose up -d`.
-2. Copy `.env.example` to `.env` and set `ARCLEDGER_MODE=mainnet`.
-3. Set `ARC_RPC_URL` and `DATABASE_URL`. Choose `INDEXER_START_BLOCK` deliberately; zero starts from genesis and can take a long time with the sequential foundation indexer.
-4. Run `npm run check:rpc` to confirm Mainnet chain ID and finalized-block access.
-5. Run `npm run db:migrate`.
-6. In separate terminals run `npm run dev:indexer` and `npm run dev`.
+Copy .env.example to the git-ignored .env and configure:
 
-The API checks the RPC chain ID before serving Mainnet data. The indexer only processes finalized blocks and stops on conflicting hashes, malformed evidence, or failed RPC/database calls. Restart it after resolving the fault; it resumes at the atomically committed checkpoint. There is no automatic demo fallback in Mainnet mode. Services bind to loopback for local use.
+```ini
+ARCLEDGER_MODE=mainnet
+DATABASE_URL=<Supabase Session Pooler URL, port 5432>
+DATABASE_SSL_CA_FILE=<absolute path to downloaded Supabase CA>
+PRIMARY_RPC_URL=<Arc Mainnet provider>
+FALLBACK_RPC_URL=<independent Arc Mainnet provider>
+API_URL=http://127.0.0.1:3001
+```
 
-For a production-mode local UI: `npm run build`, then run the API (`npm run start -w @arcledger/api`) and web (`npm run start -w @arcledger/web`) separately. `API_URL` can be set in the shell when using a non-default API location. No deployment scripts or hosted services are configured.
+Remote PostgreSQL verifies TLS. Transaction Pooler port 6543 is unsupported. Railway can use DATABASE_SSL_CA containing multiline PEM instead of a local certificate path. No Supabase API key is required. Never put database/private RPC credentials in NEXT_PUBLIC_* variables.
 
-## Checks
+```sh
+npm run check:database
+npm run db:migrate
+npm run check:rpc
+npm run dev:indexer
+# Separate terminal: required canonical projection worker
+npm run dev:ledger
+# Separate terminal: API and web
+npm run dev
+```
+
+For local PostgreSQL instead, use `docker compose up -d` and the example localhost connection. Supabase users do not need Docker.
+
+INDEX_START_BLOCK selects the initial backfill block; unset it to begin at the current committed head. A persisted checkpoint always wins on restart. Arc blocks are final on inclusion; incomplete RPC results retry without advancing the checkpoint. Run one raw worker and one ledger worker. `project:once` processes up to 100 pending transactions for bounded checks.
+
+## Read API
+
+| Endpoint                                            | Purpose                                                 |
+| --------------------------------------------------- | ------------------------------------------------------- |
+| GET /v1/status                                      | Database/RPC health, head, lag, coverage and validation |
+| GET /v1/address/:address                            | RPC balance and indexed received/sent/fee totals        |
+| GET /v1/address/:address/ledger?limit=50&cursor=... | Stable cursor-paginated address entries                 |
+| GET /v1/tx/:txHash                                  | Canonical movements, fee and matching evidence          |
+
+Add `?includeRaw=true` to the transaction endpoint for retained transaction/receipt/log payloads. Public reads have bounded rate limits and no accounts/API keys. See [API details](docs/api.md).
+
+## Tests and validation
 
 ```sh
 npm test
-npm run typecheck
 npm run build
-# With npm run dev running, and a Playwright Chromium installed:
+# Demo API/web running, with Playwright Chromium installed:
 npm run test:ui
+# Configured Supabase with indexed and projected blocks:
+npm run validate:mainnet
 ```
 
-Database integration tests execute the PostgreSQL schema and SQL against PGlite (embedded PostgreSQL). Docker PostgreSQL remains the development service; a Docker daemon is not required for the test suite.
+The validator defaults to the latest five stored raw blocks. VALIDATION_START_BLOCK and VALIDATION_END_BLOCK select 1–1000 contiguous blocks. It independently decodes freshly fetched RPC logs, compares raw/canonical records and exact 18/6 matching, and checks receipt fees and address net changes. Results persist in validation_runs and .local/mainnet-validation.json. It prints VALID/INVALID/ERROR and exits nonzero on failure. Empty samples and pending projections cannot pass.
 
-## Structure
+`/validation` shows actual sample bounds and completion time. Zero mismatches means no failed checks **in that sample**, not lifetime reconciliation or certification of later blocks. Validator rewards and other non-event balance changes remain outside this scope.
 
-- `apps/web`: Next.js, Tailwind, shadcn-style Button, Framer Motion, Lucide, locally bundled Geist fonts.
-- `apps/api`: Hono read-only address, transaction explain, and status endpoints.
-- `apps/indexer`: viem finalized block and receipt ingestion.
-- `packages/normalizer`: strict parsing, native canonical movements, one-to-one duplicate matching, exact fees.
-- `packages/database`: schema, atomic checkpointing, queries, and an explicit demo adapter.
-- `packages/arc-config`: all Arc protocol/network constants, client construction, chain verification.
-- `packages/types`: shared adapter, evidence, movement, and API contracts.
-- `examples/node-client`: minimal read-only API example.
+Tests cover native/dual events, precision/dust, repeated participants, self transfers, relayer/failed-transaction fees, pagination, replay, interrupted writes, restart and lost commit acknowledgements. `test:mainnet` and `test:ledger:mainnet` use isolated local databases; `verify:database` tests bounded ingestion/restart against the configured database. See [test evidence](docs/testing.md).
 
-## Part 1 boundaries
+## Deploy yourself to Railway
 
-This is the foundation for the five-part build, not a claim that the entire Mainnet MVP has passed validation. Mainnet balance reconciliation, validator reward accounting, throughput optimization, and operational hardening remain later work. The status API returns `accountingMismatches: null` and `validation: not-run` until real reconciliation is implemented. Indexed-period totals are not lifetime totals. Current balance comes from a separate finalized-block RPC snapshot and may be ahead of indexed coverage.
+Follow the [Railway runbook](docs/railway.md): four root-workspace services (web, api, indexer, ledger), one Dockerfile, Supabase Session Pooler, verified TLS, private API networking and public domains. Exact commands and variables are provided. Web requires only API_URL, never database credentials. No deployment is performed by this repository's build/test commands.
 
-Native system Transfer evidence is authoritative; unmatched ERC-20 logs remain visible as warnings and do not create invented movements. Matching repeated equal transfers is deterministic by log order and proves a multiset match, not a call-trace association.
+## Scope and documentation
 
-See [architecture](docs/architecture.md), [normalization](docs/normalization.md), [API](docs/api.md), [Part 1 checklist](docs/part-1.md), and [UI design](design.md).
+No smart contract is required. Webhook tables remain reserved and unused. Authentication, billing, multichain support, tax reporting and analytics are outside this MVP. Demo data never substitutes for a failed Mainnet connection.
 
-Local verification results: [testing report](docs/testing.md). Run the bounded live read-only smoke with `npm run test:mainnet`. License: MIT.
+Read [architecture](docs/architecture.md), [normalization](docs/normalization.md), [API](docs/api.md), [Part 5 validation/demo](docs/part-5.md), [Railway](docs/railway.md), and the earlier [ingestion](docs/part-2.md), [ledger](docs/part-3.md), [Supabase](docs/part-4.md) runbooks.
+
+MIT licensed.

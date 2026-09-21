@@ -18,7 +18,18 @@
     "check:rpc": "tsx --env-file-if-exists=.env scripts/check-rpc.ts",
     "test:ui": "playwright test",
     "format": "prettier --write apps packages scripts tests docs *.json *.ts *.md *.yml",
-    "test:mainnet": "tsx --env-file-if-exists=.env scripts/smoke-mainnet.ts"
+    "test:mainnet": "tsx --env-file-if-exists=.env scripts/smoke-mainnet.ts",
+    "project:once": "tsx --env-file-if-exists=.env scripts/project.ts",
+    "dev:ledger": "tsx --env-file-if-exists=.env scripts/project-worker.ts",
+    "test:ledger:mainnet": "tsx --env-file-if-exists=.env scripts/smoke-ledger.ts",
+    "check:database": "tsx --env-file-if-exists=.env scripts/check-database.ts",
+    "verify:database": "tsx --env-file-if-exists=.env scripts/verify-database.ts",
+    "validate:mainnet": "tsx --env-file-if-exists=.env scripts/validate-mainnet.ts",
+    "start:api": "tsx apps/api/src/main.ts",
+    "start:indexer": "tsx apps/indexer/src/main.ts",
+    "start:ledger": "tsx scripts/project-worker.ts",
+    "start:web": "npm run start -w @arcledger/web",
+    "verify:replay": "tsx --env-file-if-exists=.env scripts/verify-replay.ts"
   },
   "dependencies": {
     "viem": "^2.37.0",

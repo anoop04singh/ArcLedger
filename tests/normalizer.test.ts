@@ -43,6 +43,33 @@ export function input(logs: RawLog[] = []): AccountingInput {
 }
 const adapter = new ArcAccountingAdapter();
 describe("Arc accounting", () => {
+  it("normalizes a native-only 1 USDC transfer with exact 18/6 unit equivalence", () => {
+    const tx = adapter.explain(input([log("native", 10n ** 18n, 0)]));
+    expect(tx.movements).toHaveLength(1);
+    expect(toNativeUnits(1_000_000n)).toBe(1_000_000_000_000_000_000n);
+    expect(formatUSDC(tx.movements[0].amount, 6)).toBe("1.000000");
+  });
+  it.each([A, B])(
+    "keeps different amounts separate when the second recipient is %s",
+    (recipient) => {
+      const tx = adapter.explain(
+        input([
+          log("native", 10n ** 18n, 0),
+          log("erc20", 10n ** 6n, 1),
+          log("native", 2n * 10n ** 18n, 2, A, recipient),
+          log("erc20", 2n * 10n ** 6n, 3, A, recipient),
+        ]),
+      );
+      expect(tx.movements.map((m) => m.amount)).toEqual([
+        "1000000000000000000",
+        "2000000000000000000",
+      ]);
+      expect(tx.movements.map((m) => m.evidence)).toEqual([
+        [0, 1],
+        [2, 3],
+      ]);
+    },
+  );
   it("matches dual representations into exactly one $10 movement", () => {
     const tx = adapter.explain(
       input([log("native", 10n ** 19n, 0), log("erc20", 10n ** 7n, 1)]),
@@ -131,15 +158,23 @@ describe("Arc accounting", () => {
       adapter.explain(input([log("native", amount, 0)])).movements[0].amount,
     ).toBe(amount.toString());
   });
-  it("does not count zero or self transfers", () => {
+  it("retains one self transfer and ignores zero representations", () => {
     const tx = adapter.explain(
-      input([log("erc20", 0n, 0), log("erc20", 1n, 1, A, A)]),
+      input([
+        log("erc20", 0n, 0),
+        log("native", 10n ** 18n, 1, A, A),
+        log("erc20", 10n ** 6n, 2, A, A),
+      ]),
     );
-    expect(tx.movements).toHaveLength(0);
+    expect(tx.movements).toHaveLength(1);
+    expect(tx.movements[0]).toMatchObject({
+      kind: "self",
+      from: A,
+      to: A,
+      evidence: [1, 2],
+    });
     expect(tx.warnings).toEqual([]);
-    expect(tx.evidence.every((e) => e.disposition === "no-movement")).toBe(
-      true,
-    );
+    expect(tx.evidence[0].disposition).toBe("no-movement");
   });
   it("rejects malformed, removed, and duplicate receipt evidence", () => {
     expect(() =>

@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { ArrowDown, ArrowUp, Check, ChevronRight, Layers3 } from "lucide-react";
-import { formatUSDC } from "@arcledger/normalizer";
+import { formatUSDC, canonicalSource } from "@arcledger/normalizer";
 import type { ExplainedTransaction } from "@arcledger/types";
-import { short } from "@/lib/api";
+import { short } from "@/lib/format";
 export function Pill({
   children,
   tone = "green",
@@ -37,92 +37,66 @@ export function Failure({ message }: { message: string }) {
     </section>
   );
 }
-export function TransactionRow({
-  tx,
-  address,
-}: {
-  tx: ExplainedTransaction;
-  address: string;
-}) {
-  const movements = tx.movements.filter(
-    (m) => m.from === address || m.to === address,
-  );
-  const incoming = movements.reduce(
-    (n, m) => n + (m.to === address ? BigInt(m.amount) : 0n),
-    0n,
-  );
-  const outgoing = movements.reduce(
-    (n, m) => n + (m.from === address ? BigInt(m.amount) : 0n),
-    0n,
-  );
-  const received = incoming > outgoing,
-    amount = received ? incoming - outgoing : outgoing - incoming;
-  const m = movements[0];
-  return (
-    <Link className="transaction-row" href={`/tx/${tx.hash}`}>
-      <span className={`direction ${received ? "incoming" : ""}`}>
-        {received ? <ArrowDown size={19} /> : <ArrowUp size={19} />}
-      </span>
-      <div className="row-description">
-        <strong>
-          {!movements.length
-            ? "Gas payment"
-            : received
-              ? "Received"
-              : incoming === outgoing
-                ? "Net zero"
-                : "Sent"}
-        </strong>
-        <span className="mono">
-          {m
-            ? `${m.from === address ? "You" : short(m.from)} → ${m.to === address ? "You" : short(m.to)}`
-            : short(tx.hash)}
-          {movements.length > 1 ? ` · ${movements.length} movements` : ""}
-        </span>
-      </div>
-      <div className="row-amount">
-        <strong>
-          {formatUSDC(amount)} <span>USDC</span>
-        </strong>
-        <span>
-          {tx.sender === address
-            ? `Fee ${formatUSDC(tx.fee)} USDC`
-            : new Date(tx.timestamp).toLocaleString("en-GB", {
-                timeZone: "UTC",
-                day: "numeric",
-                month: "short",
-                hour: "2-digit",
-                minute: "2-digit",
-              }) + " UTC"}
-        </span>
-      </div>
-      <div className="row-status">
-        <span>
-          <Check size={13} /> Final
-        </span>
-        <small>
-          {tx.status === "reverted"
-            ? "Reverted"
-            : `Block ${Number(tx.blockNumber).toLocaleString("en-US")}`}
-        </small>
-      </div>
-      <ChevronRight size={16} className="muted" />
-    </Link>
-  );
-}
 export function Normalization({ tx }: { tx: ExplainedTransaction }) {
+  const duplicates = tx.evidence.filter(
+    (e) => e.disposition === "matched",
+  ).length;
+  const matchedRecords = new Set(
+    tx.movements
+      .filter((m) => m.evidence.length > 1)
+      .flatMap((m) => m.evidence),
+  ).size;
   return (
     <section className="glass normalization">
       <div className="section-heading">
         <div>
           <span className="eyebrow">FROM EVIDENCE TO ECONOMICS</span>
-          <h2>One movement. Two representations.</h2>
+          <h2>
+            {tx.movements.length === 1 && duplicates === 1
+              ? "One movement. Two representations."
+              : "From protocol records to movements."}
+          </h2>
         </div>
         <Layers3 size={21} />
       </div>
       <p className="muted">
         Protocol records tell the story. The ledger counts it once.
       </p>
+      <dl className="normalization-metrics">
+        <div>
+          <dt>Canonical source</dt>
+          <dd>
+            {canonicalSource(tx) === "eip7708"
+              ? "EIP-7708"
+              : canonicalSource(tx) === "mixed"
+                ? "EIP-7708 + ERC-20 self"
+                : canonicalSource(tx) === "erc20-self"
+                  ? "ERC-20 self transfer"
+                  : "No transfers"}
+          </dd>
+        </div>
+        <div>
+          <dt>Matched records</dt>
+          <dd>{matchedRecords}</dd>
+        </div>
+        <div>
+          <dt>Duplicate representations removed</dt>
+          <dd>{duplicates}</dd>
+        </div>
+        <div>
+          <dt>Result</dt>
+          <dd>
+            {tx.movements.length} canonical USDC{" "}
+            {tx.movements.length === 1 ? "movement" : "movements"}
+          </dd>
+        </div>
+      </dl>
+      {tx.evidence.length === 0 && (
+        <p className="muted">
+          No USDC transfer records in this receipt. The network fee is recorded
+          separately.
+        </p>
+      )}
       <div className="raw-heading eyebrow">RAW PROTOCOL RECORDS</div>
       <div className="raw-grid">
         {tx.evidence.map((e) => (
@@ -153,7 +127,7 @@ export function Normalization({ tx }: { tx: ExplainedTransaction }) {
                 {e.disposition === "canonical"
                   ? "CANONICAL ✓"
                   : e.disposition === "matched"
-                    ? "MATCHED"
+                    ? "Matched representation"
                     : e.disposition.toUpperCase()}
               </Pill>
               <span className="metadata">Log #{e.logIndex}</span>
@@ -174,6 +148,9 @@ export function Normalization({ tx }: { tx: ExplainedTransaction }) {
               <strong>
                 {formatUSDC(m.amount)} <small>USDC</small>
               </strong>
+              {m.kind === "self" && (
+                <p>Self transfer · 0 USDC transfer balance change</p>
+              )}
               {tx.movements.length > 1 && (
                 <p className="mono">
                   {short(m.from)} → {short(m.to)}

@@ -1,10 +1,14 @@
 import { ARC_MAINNET as ARC } from "@arcledger/arc-config";
-import { ArcAccountingAdapter } from "@arcledger/normalizer";
+import {
+  ArcAccountingAdapter,
+  constructAddressEntries,
+} from "@arcledger/normalizer";
 import type {
   AddressLedger,
   Hex,
   LedgerStatus,
   RawLog,
+  LedgerPosition,
 } from "@arcledger/types";
 import type { LedgerStore } from "./index.js";
 export const DEMO_ADDRESS = "0x91bd00000000000000000000000000000000a821" as Hex;
@@ -71,6 +75,40 @@ export function demoTransactions() {
 export class DemoStore implements LedgerStore {
   mode = "demo" as const;
   readonly transactions = demoTransactions();
+  async ledger(
+    address: Hex,
+    limit: number,
+    snapshot = "3",
+    after?: LedgerPosition,
+  ) {
+    const entries = this.transactions
+      .slice(0, Number(snapshot))
+      .flatMap((t) => constructAddressEntries(t))
+      .filter((e) => e.address === address)
+      .sort(
+        (a, b) =>
+          Number(BigInt(b.blockNumber) - BigInt(a.blockNumber)) ||
+          b.transactionIndex - a.transactionIndex ||
+          b.txHash.localeCompare(a.txHash) ||
+          b.entryIndex - a.entryIndex,
+      )
+      .filter(
+        (e) =>
+          !after ||
+          BigInt(e.blockNumber) < BigInt(after.block) ||
+          (e.blockNumber === after.block &&
+            (e.transactionIndex < after.transactionIndex ||
+              (e.transactionIndex === after.transactionIndex &&
+                (e.txHash < after.hash ||
+                  (e.txHash === after.hash &&
+                    e.entryIndex < after.entryIndex))))),
+      );
+    return {
+      entries: entries.slice(0, limit),
+      snapshot,
+      hasMore: entries.length > limit,
+    };
+  }
   async transaction(hash: string) {
     return this.transactions.find((t) => t.hash === hash) ?? null;
   }
@@ -90,8 +128,8 @@ export class DemoStore implements LedgerStore {
     for (const tx of txs) {
       if (tx.sender === address) fees += BigInt(tx.fee);
       for (const m of tx.movements) {
-        if (m.to === address) received += BigInt(m.amount);
-        if (m.from === address) sent += BigInt(m.amount);
+        if (m.to === address && m.from !== m.to) received += BigInt(m.amount);
+        if (m.from === address && m.from !== m.to) sent += BigInt(m.amount);
       }
     }
     return {

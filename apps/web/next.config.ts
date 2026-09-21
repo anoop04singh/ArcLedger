@@ -9,5 +9,12 @@ const config: NextConfig = {
     "@arcledger/normalizer",
   ],
   devIndicators: false,
+  webpack(config) {
+    config.resolve.extensionAlias = {
+      ...config.resolve.extensionAlias,
+      ".js": [".ts", ".tsx", ".js"],
+    };
+    return config;
+  },
 };
 export default config;

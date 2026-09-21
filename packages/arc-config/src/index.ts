@@ -1,7 +1,16 @@
-import { createPublicClient, defineChain, http } from "viem";
+import { createPublicClient, defineChain } from "viem";
+import { createArcRpc, rpcTransport } from "./rpc.js";
+export {
+  ArcRpc,
+  createArcRpc,
+  RpcUnavailableError,
+  ChainMismatchError,
+} from "./rpc.js";
+export type { RpcRequester, RpcRequest } from "./rpc.js";
 export const ARC_MAINNET = Object.freeze({
   chainId: 5042,
   rpcUrl: "https://rpc.mainnet.arc.io",
+  fallbackRpcUrl: "https://rpc.drpc.mainnet.arc.io",
   usdc: "0x3600000000000000000000000000000000000000" as const,
   systemEmitter: "0xfffffffffffffffffffffffffffffffffffffffe" as const,
   transferTopic:
@@ -19,11 +28,13 @@ export const arc = defineChain({
   rpcUrls: { default: { http: [ARC_MAINNET.rpcUrl] } },
 });
 export function createArcClient(
-  url = process.env.ARC_RPC_URL || ARC_MAINNET.rpcUrl,
+  url = process.env.PRIMARY_RPC_URL ||
+    process.env.ARC_RPC_URL ||
+    ARC_MAINNET.rpcUrl,
 ) {
   return createPublicClient({
     chain: arc,
-    transport: http(url, { timeout: 15_000, retryCount: 2 }),
+    transport: rpcTransport(createArcRpc(url)),
   });
 }
 export async function verifyChain(client: ReturnType<typeof createArcClient>) {

@@ -20,11 +20,7 @@ export default async function Home() {
           <span />
           THE ACCOUNTING LAYER FOR ARC
         </div>
-        <h1>
-          One dollar.
-          <br />
-          <span>One ledger.</span>
-        </h1>
+        <h1>ArcLedger</h1>
         <p className="hero-copy">The accounting layer for Arc USDC.</p>
         <p className="hero-description">
           Normalize native transfers, ERC-20 activity and gas
@@ -86,33 +82,6 @@ export default async function Home() {
             </div>
           </div>
         ))}
-      </section>
-      <section className="principle">
-        <div>
-          <span className="eyebrow">LESS NOISE. MORE CERTAINTY.</span>
-          <h2>
-            Protocol records are evidence.
-            <br />
-            <span>Economic movement is the truth.</span>
-          </h2>
-        </div>
-        <div className="mini-flow">
-          <div>
-            <span>NATIVE · 18 DECIMALS</span>
-            <strong>10.000000000000000000</strong>
-          </div>
-          <div>
-            <span>ERC-20 · 6 DECIMALS</span>
-            <strong>10.000000</strong>
-          </div>
-          <ArrowRight size={18} />
-          <div className="mini-result">
-            <span>CANONICAL USDC</span>
-            <strong>
-              10.00 <Check size={15} />
-            </strong>
-          </div>
-        </div>
       </section>
       <div className="home-status">
         <span

@@ -1,30 +1,42 @@
-# Architecture
+# Architecture — complete MVP
 
-Arc Mainnet -> finalized blocks + every transaction receipt -> ArcAccountingAdapter -> PostgreSQL -> Hono API -> Next.js.
+Arc Mainnet committed blocks -> raw capture -> PostgreSQL -> separate canonical projection -> Hono API -> Next.js.
 
-The packages separate chain facts, data contracts, accounting rules, persistence, and presentation. No wallet, authentication, billing, multichain routing, queues, or analytics infrastructure is introduced.
+The raw ingestor has no dependency on normalization decisions. Blocks, complete original transaction/receipt JSON, and logs from every emitter are persisted before a separate projection can classify or match evidence. Failure to parse an event never discards the source record.
 
-## Ingestion guarantees
+## Ingestion
 
-Only `finalized` block ranges are processed. Each receipt must belong to the fetched block. All receipts are included, even reverted or zero-transfer transactions, because gas is an economic cost. Receipt gas is attributed to the transaction sender; transfer attribution comes from event participants, including relayed activity.
+`eth_blockNumber` supplies the committed head. Arc finality is deterministic on inclusion, so there is no confirmation offset or reorg rollback. A bounded group of blocks is fetched concurrently; their database commits remain ordered. Transaction/receipt metadata is cross-checked against the block, and `eth_getLogs` must agree with receipt logs. Missing or inconsistent RPC responses retry the block. Committed hash/parent conflicts stop the worker for investigation.
 
-A dedicated PostgreSQL connection holds a session advisory lock, allowing one writer. A block, raw decoded evidence, canonical movements, and its checkpoint commit in one transaction. The cursor only advances after commit. Primary keys make identical block replays idempotent. Parent hash conflicts and non-contiguous ingestion stop processing rather than silently overwriting finalized history. RPC requests have bounded retries and timeouts. Persistent failures terminate the worker so its heartbeat becomes stale.
+Each RPC request tries primary and then fallback. Both endpoints are chain-verified. Small JSON-RPC batches avoid provider limits without adding a load balancer. A dedicated PostgreSQL session holds the writer advisory lock; each block, its raw records and its checkpoint share one transaction. Idempotent replay, reconnect/resume after transient failures, and graceful shutdown preserve a contiguous indexed range.
 
-`numeric(78,0)` stores native uint256-sized values. JSONB explanations retain raw amounts, precision, matching disposition, and evidence indices. No floating-point amount arithmetic is used. PostgreSQL indexes support address and transaction lookup; address totals cover stored history only.
+Versioned migrations upgrade the original Part 1 schema in place. Existing normalized data is preserved. Historical raw data absent from the old schema is explicitly unavailable. See [Part 2](part-2.md) for tables, constraints, configuration and restart behavior.
 
-## Local and live separation
+## Accounting and presentation
 
-DemoStore is an explicit synthetic fixture source. Mainnet mode requires DATABASE_URL and a verified Arc RPC. Missing services yield unavailable responses, never substituted sample data. The status page does not claim a successful accounting reconciliation. Live means the persisted cursor has caught up to its observed finalized head and the worker heartbeat is recent; it is not an independent RPC health certification.
+The continuous `dev:ledger` worker (or bounded `project:once` command) uses the reusable normalizer to populate transfers, address entries and explanations. It is a downstream operation, outside the raw indexer transaction. Exact values use BigInt and numeric(78,0); raw RPC hex quantities are also retained. Parsing failures leave raw records untouched and appear as pending/error status.
 
-## Known foundation limitations
+The four read-only APIs expose status, address summaries, cursor-paginated ledger entries and transaction explanation. `/v1/tx/:txHash?includeRaw=true` retains audit access. The canonical explain route returns a clear pending response until the projection exists. Address totals/history and status show whether normalization is behind raw capture. Current balance comes from a separate block-pinned RPC request through the same failover mechanism.
 
-Sequential receipt fetching prioritizes correctness over throughput; provider-specific batched receipt ingestion can follow. No automatic fork rollback is implemented because this stage only accepts finalized blocks; conflicts require investigation. Migration is additive/idempotent schema initialization, not a full versioned migration framework. Balance reconciliation must account for non-event state changes such as validator rewards before it can certify address deltas. Offsetting history pagination can shift while new blocks are inserted; a snapshot/cursor API is a later enhancement. Counts and historical totals are calculated on demand and will need materialized aggregates at large scale.
+## Limits
 
-Arc documentation was read through Arc MCP on 2026-09-17:
+Public RPC throughput varies; measured head lag is an operational metric, not a guarantee. Historical balance reconciliation still needs to account for non-event state changes such as validator rewards. Materialized aggregate counters, long-term retention policies and additional throughput tuning can follow once needed. Webhook tables are reserved and have no active delivery worker.
+
+No authentication, billing, multichain routing, queues or complex analytics infrastructure are introduced. Railway deployment assets are provided for user-operated publishing. DemoStore remains an explicit synthetic source and never substitutes for a failed Mainnet service.
+
+Arc MCP sources:
 
 - https://docs.arc.io/arc/references/usdc-system-events
 - https://docs.arc.io/integrate/infrastructure/indexing-events
-- https://docs.arc.io/arc/references/connect-to-arc
+- https://docs.arc.io/arc/references/evm-differences
 - https://docs.arc.io/arc/references/rpc-endpoints
 
-Mainnet chain ID is 5042. Mainnet has used EIP-7708 system Transfer logs since genesis; pre-Zero5 testnet events are outside scope.
+Part 3 adds atomic versioned ledger projections, once-per-sender fee allocation, sequence-bounded keyset pagination, fresh RPC health/balance reads, and bounded per-IP/aggregate rate limits. See [ledger rules](part-3.md) and the [API contract](api.md).
+
+Part 4 centralizes verified TLS PostgreSQL connections for Supabase Session Pooler/direct connections, without changing the schema. All browser reads go through the backend; cursor load-more uses a fixed same-origin relay. The status endpoint performs a database health probe. See [Supabase setup](part-4.md).
+
+## Validation and production processes
+
+The validator fetches fresh committed blocks through the same chain-checked RPC transport, then reads a repeatable-read database snapshot. Its independent ABI decoder and ledger arithmetic oracle compare retained records, one-to-one evidence matching, canonical rows and per-address fees/net changes. It does not invoke the normalization engine to generate expected results. Runs are persisted with explicit bounds; interrupted/provider-error runs do not claim a zero mismatch result.
+
+Deploy four persistent processes: Next.js web, Hono API, raw indexer, and ledger projector. Supabase remains the shared database. Web has only a server-side API URL; backend credentials never enter its client bundle. The root Dockerfile and [Railway runbook](railway.md) describe root-workspace builds, commands, TLS, networking and verification. No automatic deployment is performed.
