@@ -17,6 +17,13 @@ pool.on("error", () =>
 );
 try {
   while (!controller.signal.aborted) {
+    if (process.env.WORKER_PAUSED === "true") {
+      console.log("Ledger paused for storage maintenance.");
+      await setTimeout(30000, undefined, { signal: controller.signal }).catch(
+        () => {},
+      );
+      continue;
+    }
     let db;
     const connectionError = () => {};
     let idle = true;

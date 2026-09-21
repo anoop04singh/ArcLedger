@@ -1,3 +1,4 @@
+import { setTimeout as delay } from "node:timers/promises";
 import {
   ARC_MAINNET,
   createArcRpc,
@@ -16,6 +17,10 @@ const options = readIndexerOptions();
 const controller = new AbortController();
 for (const signal of ["SIGINT", "SIGTERM"] as const)
   process.once(signal, () => controller.abort());
+while (process.env.WORKER_PAUSED === "true" && !controller.signal.aborted) {
+  console.log("Indexer paused for storage maintenance.");
+  await delay(30000, undefined, { signal: controller.signal }).catch(() => {});
+}
 const pool = createPool();
 pool.on("error", () =>
   console.error("Database connection lost; indexer will reconnect."),
