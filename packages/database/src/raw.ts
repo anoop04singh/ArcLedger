@@ -1,4 +1,4 @@
-import { assertWriteBudget } from "./retention.js";
+import { assertWriteBudget, StorageCapacityError } from "./retention.js";
 import { ARC_MAINNET } from "@arcledger/arc-config";
 import type { RawBlockRecord } from "@arcledger/types";
 import type { SqlClient } from "./index.js";
@@ -57,51 +57,7 @@ export async function saveRawBlock(
     if (previous !== block.parentHash)
       throw new DataIntegrityError("Committed parent hash conflict");
   }
-  const txRows = block.transactions.map(({ transaction: t, receipt: r }) => {
-    if (
-      t.blockHash !== block.hash ||
-      r.blockHash !== block.hash ||
-      BigInt(t.blockNumber) !== BigInt(block.number) ||
-      BigInt(r.blockNumber) !== BigInt(block.number) ||
-      t.hash !== r.transactionHash
-    )
-      throw new DataIntegrityError("Receipt block mismatch");
-    return {
-      tx_hash: t.hash.toLowerCase(),
-      block_number: block.number,
-      transaction_index: Number(BigInt(t.transactionIndex)),
-      from_address: t.from.toLowerCase(),
-      to_address: t.to?.toLowerCase() ?? null,
-      value: BigInt(t.value).toString(),
-      status: BigInt(r.status) === 1n ? "success" : "reverted",
-      gas_used: BigInt(r.gasUsed).toString(),
-      effective_gas_price: BigInt(r.effectiveGasPrice).toString(),
-      fee_raw: (BigInt(r.gasUsed) * BigInt(r.effectiveGasPrice)).toString(),
-      timestamp: block.timestamp,
-      raw_transaction: t,
-      raw_receipt: r,
-    };
-  });
-  const logRows = block.logs.map((log) => {
-    if (
-      log.blockHash !== block.hash ||
-      BigInt(log.blockNumber) !== BigInt(block.number)
-    )
-      throw new DataIntegrityError("Log block mismatch");
-    return {
-      block_number: block.number,
-      block_hash: block.hash,
-      transaction_hash: log.transactionHash.toLowerCase(),
-      transaction_index: Number(BigInt(log.transactionIndex)),
-      log_index: Number(BigInt(log.logIndex)),
-      emitter: log.address.toLowerCase(),
-      topic0: log.topics[0]?.toLowerCase() ?? null,
-      topics: log.topics,
-      data: log.data,
-      timestamp: block.timestamp,
-      raw_log: log,
-    };
-  });
+  const { txRows, logRows } = prepareRawRows(block);
   const {
     rows: [written],
   } = await db.query(
@@ -164,4 +120,93 @@ export async function commitRawBlock(
     }
     throw error;
   }
+}
+
+function prepareRawRows(block: RawBlockRecord) {
+  const txRows = block.transactions.map(({ transaction: t, receipt: r }) => {
+    if (
+      t.blockHash !== block.hash ||
+      r.blockHash !== block.hash ||
+      BigInt(t.blockNumber) !== BigInt(block.number) ||
+      BigInt(r.blockNumber) !== BigInt(block.number) ||
+      t.hash !== r.transactionHash
+    )
+      throw new DataIntegrityError("Receipt block mismatch");
+    return {
+      tx_hash: t.hash.toLowerCase(),
+      block_number: block.number,
+      transaction_index: Number(BigInt(t.transactionIndex)),
+      from_address: t.from.toLowerCase(),
+      to_address: t.to?.toLowerCase() ?? null,
+      value: BigInt(t.value).toString(),
+      status: BigInt(r.status) === 1n ? "success" : "reverted",
+      gas_used: BigInt(r.gasUsed).toString(),
+      effective_gas_price: BigInt(r.effectiveGasPrice).toString(),
+      fee_raw: (BigInt(r.gasUsed) * BigInt(r.effectiveGasPrice)).toString(),
+      timestamp: block.timestamp,
+      raw_transaction: t,
+      raw_receipt: r,
+    };
+  });
+  const logRows = block.logs.map((log) => {
+    if (
+      log.blockHash !== block.hash ||
+      BigInt(log.blockNumber) !== BigInt(block.number)
+    )
+      throw new DataIntegrityError("Log block mismatch");
+    return {
+      block_number: block.number,
+      block_hash: block.hash,
+      transaction_hash: log.transactionHash.toLowerCase(),
+      transaction_index: Number(BigInt(log.transactionIndex)),
+      log_index: Number(BigInt(log.logIndex)),
+      emitter: log.address.toLowerCase(),
+      topic0: log.topics[0]?.toLowerCase() ?? null,
+      topics: log.topics,
+      data: log.data,
+      timestamp: block.timestamp,
+      raw_log: log,
+    };
+  });
+  return { txRows, logRows };
+}
+
+/** Server-side transaction for high-latency database links. The function enforces the same storage guard before its statement commits. */
+export async function commitRawBlockAtomic(
+  db: SqlClient,
+  block: RawBlockRecord,
+  head: string,
+) {
+  if (
+    block.chainId !== ARC_MAINNET.chainId ||
+    BigInt(head) < BigInt(block.number)
+  )
+    throw new DataIntegrityError("Unexpected chain or head");
+  const { txRows, logRows } = prepareRawRows(block);
+  const {
+    rows: [result],
+  } = await db
+    .query(
+      "SELECT public.arcledger_ingest($1,$2,$3,$4,$5,$6,$7,$8,$9) inserted",
+      [
+        block.chainId,
+        block.number,
+        block.hash,
+        block.parentHash,
+        block.timestamp,
+        JSON.stringify(block.raw),
+        JSON.stringify(txRows),
+        JSON.stringify(logRows),
+        head,
+      ],
+    )
+    .catch((error) => {
+      if (error?.code === "P0004")
+        throw new StorageCapacityError(
+          "Storage write rolled back; retention must reclaim space before retrying.",
+        );
+      if (error?.code === "P0001") throw new DataIntegrityError(error.message);
+      throw error;
+    });
+  return result.inserted as boolean;
 }

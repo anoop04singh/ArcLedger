@@ -145,19 +145,54 @@ export async function enforceHistoryBudget(
       [chain],
     );
   };
-  let bytes = await measure(db),
-    deleted = 0;
+  let bytes: number,
+    previous:
+      | {
+          needs_compaction?: boolean;
+          prune_target?: string | null;
+          state?: string;
+        }
+      | undefined;
+  if (!dependencies.measure) {
+    const {
+      rows: [snapshot],
+    } = await db.query(
+      `INSERT INTO retention_state(chain_id,database_bytes,cap_bytes,state)
+      VALUES($1,pg_database_size(current_database()),$2,'ready')
+      ON CONFLICT(chain_id) DO UPDATE SET database_bytes=EXCLUDED.database_bytes,cap_bytes=EXCLUDED.cap_bytes,checked_at=now()
+      RETURNING database_bytes,needs_compaction,prune_target,state`,
+      [chain, HISTORY_CAP_BYTES],
+    );
+    bytes = Number(snapshot.database_bytes);
+    previous = snapshot;
+  } else {
+    bytes = await measure(db);
+    const {
+      rows: [snapshot],
+    } = await db.query(
+      "SELECT needs_compaction,prune_target FROM retention_state WHERE chain_id=$1",
+      [chain],
+    );
+    previous = snapshot;
+  }
+  let deleted = 0;
   const record = async (state: string) =>
     db.query(
       `INSERT INTO retention_state(chain_id,database_bytes,cap_bytes,state) VALUES($1,$2,$3,$4) ON CONFLICT(chain_id) DO UPDATE SET database_bytes=EXCLUDED.database_bytes,cap_bytes=EXCLUDED.cap_bytes,state=EXCLUDED.state,checked_at=now()`,
       [chain, bytes, HISTORY_CAP_BYTES, state],
     );
-  const {
-    rows: [previous],
-  } = await db.query(
-    "SELECT needs_compaction,prune_target FROM retention_state WHERE chain_id=$1",
-    [chain],
-  );
+  if (
+    !dependencies.measure &&
+    previous?.state === "ready" &&
+    !previous.needs_compaction &&
+    previous.prune_target == null &&
+    bytes + reserveBytes < HISTORY_TRIGGER_BYTES
+  )
+    return {
+      databaseBytes: bytes,
+      prunedBlocks: 0,
+      capBytes: HISTORY_CAP_BYTES,
+    };
   if (
     bytes + reserveBytes >= HISTORY_TRIGGER_BYTES ||
     previous?.needs_compaction ||

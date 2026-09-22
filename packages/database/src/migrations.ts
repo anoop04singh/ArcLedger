@@ -18,6 +18,7 @@ export async function migrate(db: SqlClient) {
       ["006-retention", "./migrations/006-retention.sql"],
       ["007-retention-indexes", "./migrations/007-retention-indexes.sql"],
       ["008-retention-batches", "./migrations/008-retention-batches.sql"],
+      ["009-atomic-ingest", "./migrations/009-atomic-ingest.sql"],
     ]) {
       const { rows } = await db.query(
         "SELECT name FROM schema_migrations WHERE name=$1",

@@ -7,7 +7,7 @@ import {
 import {
   checkpoint,
   heartbeat,
-  commitRawBlock,
+  commitRawBlockAtomic as commitRawBlock,
   DataIntegrityError,
   type SqlClient,
 } from "@arcledger/database";

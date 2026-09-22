@@ -137,7 +137,7 @@ it("a lost COMMIT acknowledgement reconnects and reads the committed checkpoint"
       db: {
         query: async (text: string, values?: unknown[]) => {
           const result = await db.query(text, values);
-          if (text === "COMMIT" && !lost) {
+          if (text.includes("public.arcledger_ingest(") && !lost) {
             lost = true;
             throw new Error("connection closed after COMMIT");
           }

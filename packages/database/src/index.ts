@@ -16,6 +16,7 @@ export {
   heartbeat,
   saveRawBlock,
   commitRawBlock,
+  commitRawBlockAtomic,
   DataIntegrityError,
 } from "./raw.js";
 export { projectPending } from "./projection.js";
