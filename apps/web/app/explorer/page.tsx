@@ -12,17 +12,15 @@ export default async function Explorer() {
         <div>
           <span className="eyebrow">ARC MAINNET / USDC</span>
           <h1>
-            Follow the money.
+            Every transfer.
             <br />
-            <span>Understand the movement.</span>
+            <span>One clear record.</span>
           </h1>
           <p>
-            Live network context. An auditable trail. Every USDC counted once.
+            Search an address or transaction. See what moved, who paid the fee,
+            and the evidence behind it.
           </p>
         </div>
-        <span className="explorer-symbol" aria-hidden="true">
-          ↗
-        </span>
       </div>
       <SearchBar />
       <LiveExplorer initial={data} />

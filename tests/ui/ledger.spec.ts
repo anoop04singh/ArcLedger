@@ -1,6 +1,60 @@
 import { test, expect } from "@playwright/test";
 const ADDRESS = "0x91bd00000000000000000000000000000000a821";
 const HASH = `0x${"a2".repeat(32)}`;
+
+test("readable amounts preserve precision and storage warnings stay visible", async ({
+  page,
+}) => {
+  const snapshot = await (await page.request.get("/api/explorer")).json();
+  const exact = "9007199254740993.123456789";
+  await page.route("**/api/explorer", (route) =>
+    route.fulfill({
+      json: {
+        ...snapshot,
+        retention: {
+          capBytes: 400000000,
+          databaseBytes: 284000000,
+          prunedBlocks: 10,
+          prunedThrough: "100",
+          state: "blocked",
+          checkedAt: new Date().toISOString(),
+        },
+        recentTransactions: [
+          { ...snapshot.recentTransactions[0], amount: exact },
+        ],
+      },
+    }),
+  );
+  await page.goto("/explorer");
+  await expect(page.locator(".feed-value")).toHaveCount(1);
+  await expect(page.locator(".feed-value")).toHaveText(
+    "9,007,199,254,740,993.123456… USDC",
+  );
+  await expect(page.locator(".feed-value")).toHaveAttribute(
+    "title",
+    `${exact} USDC · Open for exact values`,
+  );
+  await expect(
+    page.getByText(
+      "Storage protection is pausing ingestion until space can be reclaimed.",
+    ),
+  ).toBeVisible();
+  await expect(page.locator(".retention-notice")).not.toHaveAttribute(
+    "open",
+    "",
+  );
+  await page.locator(".retention-notice summary").click();
+  await expect(
+    page.getByText(/Retained coverage begins at block/),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Transfers", exact: true }).click();
+  await expect(page.locator(".feed-row")).toHaveCount(1);
+  await expect(
+    page
+      .getByRole("navigation", { name: "Main navigation" })
+      .getByRole("link", { name: "Explorer", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+});
 test("interactive normalization and explorer refresh, filters, and outage recovery", async ({
   page,
 }) => {

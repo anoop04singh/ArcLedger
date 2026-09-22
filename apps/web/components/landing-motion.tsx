@@ -13,7 +13,7 @@ import {
 import { ArrowUpRight, Check, Copy, Plus, Minus } from "lucide-react";
 
 export function ScrollHeader({ children }: { children: React.ReactNode }) {
-  const { scrollY } = useScroll();
+  const { scrollY, scrollYProgress } = useScroll();
   const [hidden, setHidden] = useState(false);
   const reduce = useReducedMotion();
   useMotionValueEvent(scrollY, "change", (v) =>
@@ -27,6 +27,11 @@ export function ScrollHeader({ children }: { children: React.ReactNode }) {
       onFocusCapture={() => setHidden(false)}
     >
       {children}
+      <motion.div
+        className="reading-progress"
+        style={{ scaleX: scrollYProgress }}
+        aria-hidden="true"
+      />
     </motion.header>
   );
 }
@@ -415,38 +420,6 @@ export function ApiPreview() {
         </AnimatePresence>
         <small>Illustrative response · live data is in the explorer</small>
       </div>
-    </div>
-  );
-}
-export function UseCaseTicker() {
-  const [paused, setPaused] = useState(false);
-  return (
-    <div className="use-case-ticker">
-      <div className={paused ? "ticker-track paused" : "ticker-track"}>
-        {[0, 1].map((n) => (
-          <div key={n} aria-hidden={n === 1}>
-            {[
-              "Finance & accounting",
-              "Wallets & dashboards",
-              "Analysts & researchers",
-              "Developers",
-            ].map((t) => (
-              <span key={t}>
-                {t}
-                <i>↗</i>
-              </span>
-            ))}
-          </div>
-        ))}
-      </div>
-      <button
-        onClick={() => setPaused(!paused)}
-        aria-label={
-          paused ? "Resume use case animation" : "Pause use case animation"
-        }
-      >
-        {paused ? "Resume" : "Pause"}
-      </button>
     </div>
   );
 }

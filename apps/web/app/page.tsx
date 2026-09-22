@@ -22,7 +22,6 @@ import {
   ScrollWords,
   SignatureMerge,
   Steps,
-  UseCaseTicker,
 } from "@/components/landing-motion";
 const repo = "https://github.com/anoop04singh/ArcLedger";
 export const metadata: Metadata = {
@@ -210,7 +209,6 @@ export default function Home() {
             <span>need the numbers right.</span>
           </h2>
         </Reveal>
-        <UseCaseTicker />
         <div className="audience-grid">
           {[
             ["Finance & accounting teams", "Books that match the chain."],
@@ -312,12 +310,6 @@ export default function Home() {
           <p>The accounting layer Arc USDC has been missing.</p>
           <div className="landing-actions">
             <MagneticLink href="/explorer">View Live Demo</MagneticLink>
-            <MagneticLink
-              href={`${repo}/blob/master/docs/railway.md`}
-              secondary
-            >
-              Deploy to Railway
-            </MagneticLink>
             <Link href={`${repo}#readme`} className="text-link">
               Read the Docs <ArrowUpRight size={15} />
             </Link>

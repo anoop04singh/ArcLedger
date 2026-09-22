@@ -152,7 +152,7 @@ export default async function StatusPage() {
           </div>
         ))}
       </section>
-      <section className="glass validation">
+      <section className="glass validation" id="validation">
         <div className="section-heading">
           <h2>
             <Database size={19} /> Validation coverage

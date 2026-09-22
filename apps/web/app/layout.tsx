@@ -1,7 +1,7 @@
 import { ScrollHeader } from "@/components/landing-motion";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
+import { AppNav } from "@/components/app-nav";
 import "@fontsource/geist/400.css";
 import "@fontsource/geist/500.css";
 import "@fontsource/geist/600.css";
@@ -38,19 +38,7 @@ export default function RootLayout({
             </span>
             ArcLedger
           </Link>
-          <nav aria-label="Main navigation">
-            <Link href="/explorer">Explorer</Link>
-            <Link href="/status">Network status</Link>
-            <Link href="/validation">Validation</Link>
-            <a
-              className="docs-link"
-              href="https://docs.arc.io/arc/references/usdc-system-events"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Arc docs <ArrowUpRight size={14} />
-            </a>
-          </nav>
+          <AppNav />
           <span className="network-label">
             <span />
             Arc Mainnet

@@ -10,10 +10,11 @@ import {
   ArrowRight,
   Search,
   Check,
+  ShieldCheck,
 } from "lucide-react";
 import { RetentionNotice } from "./retention-notice";
 import type { PublicStatus } from "@arcledger/types";
-import { short } from "@/lib/format";
+import { short, compactAmount } from "@/lib/format";
 export function LiveExplorer({ initial }: { initial: PublicStatus | null }) {
   const [data, setData] = useState(initial),
     [paused, setPaused] = useState(false),
@@ -22,7 +23,7 @@ export function LiveExplorer({ initial }: { initial: PublicStatus | null }) {
       initial ? "" : "Live data could not be loaded. Try refreshing.",
     ),
     [updated, setUpdated] = useState<string | null>(null),
-    [filter, setFilter] = useState("all");
+    [filter, setFilter] = useState("transfers");
   const pending = useRef(false);
   const reduce = useReducedMotion();
   const refresh = useCallback(async (signal?: AbortSignal) => {
@@ -67,7 +68,7 @@ export function LiveExplorer({ initial }: { initial: PublicStatus | null }) {
   const rows = (data?.recentTransactions ?? []).filter(
     (t) =>
       filter === "all" ||
-      (filter === "matched" && t.duplicates > 0) ||
+      (filter === "transfers" && t.movements > 0) ||
       (filter === "fees" && t.movements === 0),
   );
   const number = (v: unknown) =>
@@ -126,22 +127,22 @@ export function LiveExplorer({ initial }: { initial: PublicStatus | null }) {
       <div className="explorer-stats">
         {[
           {
-            label: "Chain head",
-            value: data?.latestChainBlock,
-            note: "Fresh Arc RPC read",
+            label: "Blocks behind",
+            value: data?.lag,
+            note:
+              data?.latestChainBlock == null
+                ? "Waiting for Arc"
+                : `Chain head ${number(data.latestChainBlock)}`,
             color: "violet",
           },
           {
             label: "Indexed block",
             value: data?.latestIndexedBlock,
-            note:
-              data?.lag == null
-                ? "Waiting for checkpoint"
-                : `${number(data.lag)} blocks behind head`,
+            note: "Latest block stored in this ledger",
             color: "mint",
           },
           {
-            label: "Canonical records",
+            label: "USDC movements",
             value: data?.canonicalTransfers,
             note: "Within indexed coverage",
             color: "orange",
@@ -149,7 +150,7 @@ export function LiveExplorer({ initial }: { initial: PublicStatus | null }) {
           {
             label: "Duplicates matched",
             value: data?.duplicatesRemoved,
-            note: "Raw evidence stays intact",
+            note: "Counted once, within this history",
             color: "blue",
           },
         ].map((m) => (
@@ -174,13 +175,33 @@ export function LiveExplorer({ initial }: { initial: PublicStatus | null }) {
         retention={data?.retention}
         startBlock={data?.startBlock ?? null}
       />
+      {data?.validationRun && (
+        <Link className="validation-summary" href="/status#validation">
+          <ShieldCheck size={16} />
+          <strong>
+            {data.validationRun.status === "valid"
+              ? "Sample verified"
+              : data.validationRun.status === "invalid"
+                ? "Validation mismatch"
+                : "Validation incomplete"}
+          </strong>
+          <span>
+            {number(data.validationRun.blocksScanned)} blocks checked · View
+            evidence
+          </span>
+          <ArrowUpRight size={14} />
+        </Link>
+      )}
       <section className="glass transaction-feed">
         <div className="feed-heading">
           <div>
-            <span className="eyebrow">THE LEDGER, AS IT GROWS</span>
-            <h2>Recently indexed transactions</h2>
+            <span className="eyebrow">THE LATEST IN YOUR LEDGER</span>
+            <h2>Recent activity</h2>
           </div>
-          <span className="feed-count">Latest 12</span>
+          <span className="feed-count">
+            {rows.length} of {data?.recentTransactions?.length ?? 0} recent
+            transactions
+          </span>
         </div>
         <div
           className="feed-tabs"
@@ -189,7 +210,7 @@ export function LiveExplorer({ initial }: { initial: PublicStatus | null }) {
         >
           {[
             { id: "all", label: "All activity" },
-            { id: "matched", label: "Matched records" },
+            { id: "transfers", label: "Transfers" },
             { id: "fees", label: "Fee only" },
           ].map((f) => (
             <button
@@ -197,14 +218,27 @@ export function LiveExplorer({ initial }: { initial: PublicStatus | null }) {
               aria-pressed={filter === f.id}
               onClick={() => setFilter(f.id)}
             >
-              {f.label}
+              {filter === f.id && (
+                <motion.span
+                  className="filter-active"
+                  layoutId="activity-filter"
+                  transition={{ duration: reduce ? 0 : 0.2 }}
+                />
+              )}
+              <span>{f.label}</span>
             </button>
           ))}
-          <span>{updated ? `Updated ${updated}` : "Waiting for refresh"}</span>
+          <span>
+            {updated
+              ? `Updated ${updated}`
+              : data
+                ? "Indexed snapshot"
+                : "Connecting…"}
+          </span>
         </div>
         <div className="feed-columns">
           <span>Transaction / participants</span>
-          <span>Transfer volume</span>
+          <span>USDC moved / network fee</span>
           <span>Block / time (UTC)</span>
           <span>Result</span>
         </div>
@@ -238,11 +272,20 @@ export function LiveExplorer({ initial }: { initial: PublicStatus | null }) {
                   </div>
                 </div>
                 <div className="feed-amount">
-                  <strong>
-                    {tx.amount}
+                  <Link
+                    className="feed-value"
+                    href={`/tx/${tx.hash}`}
+                    title={`${tx.movements ? tx.amount : tx.fee} USDC · Open for exact values`}
+                    aria-label={`${tx.movements ? "Transferred" : "Network fee"} ${tx.movements ? tx.amount : tx.fee} USDC. View transaction.`}
+                  >
+                    {compactAmount(tx.movements ? tx.amount : tx.fee)}
                     <small> USDC</small>
-                  </strong>
-                  <span>Fee {tx.fee}</span>
+                  </Link>
+                  <span title={`Network fee ${tx.fee} USDC`}>
+                    {tx.movements
+                      ? `Fee ${compactAmount(tx.fee)}`
+                      : "Network fee · no transfer"}
+                  </span>
                 </div>
                 <div className="feed-block">
                   <span className="mono">{number(tx.blockNumber)}</span>
@@ -276,13 +319,22 @@ export function LiveExplorer({ initial }: { initial: PublicStatus | null }) {
           <div className="feed-empty">
             <Search size={22} />
             <h3>
-              {data ? "No transactions in this view" : "Waiting for the ledger"}
+              {data
+                ? filter === "transfers"
+                  ? "No transfers in this recent sample"
+                  : "No transactions in this view"
+                : "Waiting for the ledger"}
             </h3>
             <p>
               {data
                 ? "Try another filter. New normalized transactions appear as the indexer and ledger worker process blocks."
                 : "Check the API connection, then refresh."}
             </p>
+            {data && filter !== "all" && (
+              <button className="quiet-button" onClick={() => setFilter("all")}>
+                Show all activity
+              </button>
+            )}
           </div>
         )}
         <div className="feed-foot">
@@ -291,7 +343,7 @@ export function LiveExplorer({ initial }: { initial: PublicStatus | null }) {
               ? "Synthetic examples · not live Mainnet activity"
               : `Finalized, normalized records · coverage starts at ${data?.startBlock ?? "—"}`}
           </span>
-          <Link href="/validation">
+          <Link href="/status#validation">
             Verify the ledger <ArrowUpRight size={13} />
           </Link>
         </div>

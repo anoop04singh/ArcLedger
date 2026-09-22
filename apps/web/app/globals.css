@@ -2992,6 +2992,146 @@ main {
 .retention-notice strong {
   color: #344d3a;
 }
+.retention-notice summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  cursor: pointer;
+  list-style: none;
+}
+.retention-notice summary::-webkit-details-marker {
+  display: none;
+}
+.retention-notice summary::after {
+  content: "+";
+  margin-left: auto;
+  font-size: 20px;
+  color: #526b5b;
+}
+.retention-notice[open] summary::after {
+  content: "−";
+}
+.retention-notice p {
+  margin: 14px 0 0;
+  max-width: 850px;
+}
+.retention-hint {
+  font-size: 11px;
+  margin-left: auto;
+}
+.validation-summary {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 24px;
+  font-size: 12px;
+  color: #536c5d;
+}
+.validation-summary strong {
+  font-weight: 500;
+}
+.validation-summary span {
+  color: #747e77;
+}
+.validation-summary:hover strong {
+  text-decoration: underline;
+}
+.feed-tabs button {
+  position: relative;
+  isolation: isolate;
+  color: #526359;
+  min-height: 38px;
+}
+.feed-tabs button[aria-pressed="true"] {
+  background: none;
+}
+.filter-active {
+  position: absolute;
+  inset: 0;
+  border-radius: 9px;
+  background: #e5ede5;
+  z-index: -1;
+}
+.feed-value {
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+.feed-value:hover {
+  color: #35624c;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.feed-amount > span,
+.feed-block time,
+.feed-result small {
+  font-size: 11px;
+  color: #69776e;
+}
+.feed-parties {
+  font-size: 11px;
+  color: #69776e;
+}
+.feed-row {
+  padding-top: 22px;
+  padding-bottom: 22px;
+}
+.header nav a[aria-current="page"] {
+  color: #233a2c;
+  text-decoration: underline;
+  text-underline-offset: 7px;
+  text-decoration-color: #8aa591;
+}
+.reading-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #759987;
+  transform-origin: left;
+  pointer-events: none;
+}
+#validation {
+  scroll-margin-top: 100px;
+}
+@media (max-width: 600px) {
+  .retention-notice {
+    padding: 13px 15px;
+    font-size: 11px;
+  }
+  .retention-hint {
+    display: none;
+  }
+  .retention-notice summary {
+    gap: 10px;
+  }
+  .validation-summary {
+    flex-wrap: wrap;
+    font-size: 11px;
+    gap: 6px;
+  }
+  .validation-summary span {
+    flex-basis: 100%;
+    padding-left: 22px;
+  }
+  .validation-summary > svg:last-child {
+    display: none;
+  }
+  .feed-value {
+    font-size: 13px;
+  }
+  .feed-parties {
+    font-size: 10px;
+  }
+  .feed-amount > span,
+  .feed-block time,
+  .feed-result small {
+    font-size: 10px;
+  }
+}
 @media (max-width: 1000px) {
   .immersive-landing .landing-hero {
     gap: 30px;
