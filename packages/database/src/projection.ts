@@ -28,6 +28,9 @@ export async function projectPending(db: SqlClient, limit = 100) {
       "SELECT * FROM transactions WHERE chain_id=$1 AND ledger_version=0 AND (explanation IS NOT NULL OR raw_receipt IS NOT NULL) AND projection_error IS NULL ORDER BY block_number,transaction_index NULLS LAST,tx_hash LIMIT $2 FOR UPDATE",
       [ARC_MAINNET.chainId, limit],
     );
+    const movements: Record<string, unknown>[] = [],
+      entries: Record<string, unknown>[] = [],
+      explanations: Record<string, unknown>[] = [];
     for (const row of rows) {
       let explanation: ExplainedTransaction;
       try {
@@ -49,59 +52,65 @@ export async function projectPending(db: SqlClient, limit = 100) {
         failed++;
         continue;
       }
-      for (const movement of explanation.movements) {
-        await db.query(
-          "INSERT INTO transfers(id,chain_id,transaction_hash,from_address,to_address,amount) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(id) DO NOTHING",
-          [
-            movement.id,
-            ARC_MAINNET.chainId,
-            explanation.hash,
-            movement.from,
-            movement.to,
-            movement.amount,
-          ],
-        );
-      }
-      // Replace Part 2's provisional entries atomically, keeping all original raw data.
-      await db.query(
-        "DELETE FROM address_entries WHERE chain_id=$1 AND transaction_hash=$2",
-        [ARC_MAINNET.chainId, explanation.hash],
-      );
-      for (const entry of constructAddressEntries(
+      for (const m of explanation.movements)
+        movements.push({
+          id: m.id,
+          transaction_hash: explanation.hash,
+          from_address: m.from,
+          to_address: m.to,
+          amount: m.amount,
+        });
+      for (const e of constructAddressEntries(
         explanation,
         row.transaction_index ?? 0,
-      )) {
-        await db.query(
-          `INSERT INTO address_entries(id,chain_id,address,transaction_hash,kind,amount_raw,block_number,counterparty,fee_raw,gross_change,net_change,entry_type,transaction_index,entry_index,timestamp)
-          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) ON CONFLICT(id) DO NOTHING`,
-          [
-            entry.id,
-            ARC_MAINNET.chainId,
-            entry.address,
-            entry.txHash,
-            entry.type === "network_fee"
+      ))
+        entries.push({
+          id: e.id,
+          address: e.address,
+          transaction_hash: e.txHash,
+          kind:
+            e.type === "network_fee"
               ? "fee"
-              : entry.direction === "incoming"
+              : e.direction === "incoming"
                 ? "received"
                 : "sent",
-            entry.amount,
-            entry.blockNumber,
-            entry.counterparty,
-            entry.fee,
-            entry.grossChange,
-            entry.netChange,
-            entry.type,
-            entry.transactionIndex,
-            entry.entryIndex,
-            entry.timestamp,
-          ],
-        );
-      }
-      await db.query(
-        "UPDATE transactions SET explanation=$3,ledger_version=1,ledger_sequence=nextval('ledger_projection_sequence') WHERE chain_id=$1 AND tx_hash=$2",
-        [ARC_MAINNET.chainId, explanation.hash, JSON.stringify(explanation)],
-      );
+          amount_raw: e.amount,
+          block_number: e.blockNumber,
+          counterparty: e.counterparty,
+          fee_raw: e.fee,
+          gross_change: e.grossChange,
+          net_change: e.netChange,
+          entry_type: e.type,
+          transaction_index: e.transactionIndex,
+          entry_index: e.entryIndex,
+          timestamp: e.timestamp,
+        });
+      explanations.push({ tx_hash: explanation.hash, explanation });
       projected++;
+    }
+    if (projected) {
+      await db.query(
+        "DELETE FROM address_entries WHERE chain_id=$1 AND transaction_hash=ANY($2::text[])",
+        [ARC_MAINNET.chainId, explanations.map((e) => e.tx_hash)],
+      );
+      await db.query(
+        `WITH movements AS (
+        INSERT INTO transfers(chain_id,id,transaction_hash,from_address,to_address,amount)
+        SELECT $1,x.* FROM jsonb_to_recordset($2::jsonb) AS x(id text,transaction_hash text,from_address text,to_address text,amount numeric)
+        ON CONFLICT(id) DO NOTHING RETURNING id
+      ), entries AS (
+        INSERT INTO address_entries(chain_id,id,address,transaction_hash,kind,amount_raw,block_number,counterparty,fee_raw,gross_change,net_change,entry_type,transaction_index,entry_index,timestamp)
+        SELECT $1,x.* FROM jsonb_to_recordset($3::jsonb) AS x(id text,address text,transaction_hash text,kind text,amount_raw numeric,block_number numeric,counterparty text,fee_raw numeric,gross_change numeric,net_change numeric,entry_type text,transaction_index integer,entry_index integer,timestamp timestamptz)
+        ON CONFLICT(id) DO NOTHING RETURNING id
+      ) UPDATE transactions t SET explanation=x.explanation,ledger_version=1,ledger_sequence=nextval('ledger_projection_sequence')
+        FROM jsonb_to_recordset($4::jsonb) AS x(tx_hash text,explanation jsonb) WHERE t.chain_id=$1 AND t.tx_hash=x.tx_hash`,
+        [
+          ARC_MAINNET.chainId,
+          JSON.stringify(movements),
+          JSON.stringify(entries),
+          JSON.stringify(explanations),
+        ],
+      );
     }
     await assertWriteBudget(db);
     await db.query("COMMIT");

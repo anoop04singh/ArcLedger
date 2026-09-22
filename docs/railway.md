@@ -80,7 +80,7 @@ Railway references: [shared monorepos](https://docs.railway.com/deployments/mono
 - Explorer: https://web-production-e1571d.up.railway.app/explorer
 - Public API: https://api-production-0b89.up.railway.app
 - Source: https://github.com/anoop04singh/ArcLedger (`master`)
-- Services: `web`, `api`, `indexer`, `ledger`, one replica each in Singapore near the existing Asian Supabase database.
+- Services: `web`, `api`, `indexer`, `ledger`, one replica each in Singapore. The replacement Supabase project is in Seoul; database writes are batched to reduce cross-region round trips. For a future fresh setup, choose matching database/application regions where possible.
 - API pre-deploy command: `npm run db:migrate`; healthcheck `/health`. Web healthcheck `/`.
 - Web uses Railway private networking. Backend workers reference the API service variables; database credentials remain off the web service.
 - Initial production checks confirmed Mainnet mode, healthy database/RPC, advancing raw checkpoints and real recent transaction data. The preserved historical backlog is still syncing; no checkpoint was reset or skipped. Use `/v1/status` for current lag and pending normalization.

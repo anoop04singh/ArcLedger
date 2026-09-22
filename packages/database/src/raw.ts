@@ -40,15 +40,12 @@ export async function saveRawBlock(
   if (BigInt(head) < BigInt(block.number))
     throw new DataIntegrityError("Block beyond observed head");
   const {
-    rows: [state],
+    rows: [{ state, existing, previous }],
   } = await db.query(
-    "SELECT * FROM indexer_state WHERE chain_id=$1 FOR UPDATE",
-    [chain],
-  );
-  const {
-    rows: [existing],
-  } = await db.query(
-    "SELECT block_hash,raw_complete FROM blocks WHERE chain_id=$1 AND block_number=$2",
+    `WITH locked AS (SELECT * FROM indexer_state WHERE chain_id=$1 FOR UPDATE)
+     SELECT (SELECT to_jsonb(s) FROM locked s) state,
+       (SELECT jsonb_build_object('block_hash',block_hash,'raw_complete',raw_complete) FROM blocks WHERE chain_id=$1 AND block_number=$2) existing,
+       (SELECT block_hash FROM blocks WHERE chain_id=$1 AND block_number=(SELECT last_processed_block FROM locked)) previous`,
     [chain, block.number],
   );
   if (existing?.block_hash && existing.block_hash !== block.hash)
@@ -57,13 +54,7 @@ export async function saveRawBlock(
   if (state && !existing) {
     if (BigInt(block.number) !== BigInt(state.last_processed_block) + 1n)
       throw new DataIntegrityError("Non-contiguous block ingestion");
-    const {
-      rows: [previous],
-    } = await db.query(
-      "SELECT block_hash FROM blocks WHERE chain_id=$1 AND block_number=$2",
-      [chain, state.last_processed_block],
-    );
-    if (previous?.block_hash !== block.parentHash)
+    if (previous !== block.parentHash)
       throw new DataIntegrityError("Committed parent hash conflict");
   }
   const txRows = block.transactions.map(({ transaction: t, receipt: r }) => {
@@ -111,9 +102,25 @@ export async function saveRawBlock(
       raw_log: log,
     };
   });
-  await db.query(
-    `INSERT INTO blocks(chain_id,block_number,block_hash,parent_hash,timestamp,raw_block) VALUES($1,$2,$3,$4,$5,$6)
- ON CONFLICT(chain_id,block_number) DO UPDATE SET raw_block=COALESCE(blocks.raw_block,EXCLUDED.raw_block)`,
+  const {
+    rows: [written],
+  } = await db.query(
+    `WITH saved_block AS (
+      INSERT INTO blocks(chain_id,block_number,block_hash,parent_hash,timestamp,raw_block,raw_complete) VALUES($1,$2,$3,$4,$5,$6,true)
+      ON CONFLICT(chain_id,block_number) DO UPDATE SET raw_block=COALESCE(blocks.raw_block,EXCLUDED.raw_block),raw_complete=true,processed_at=now() RETURNING block_number
+    ), saved_transactions AS (
+      INSERT INTO transactions(chain_id,tx_hash,block_number,transaction_index,from_address,to_address,value,status,gas_used,effective_gas_price,fee_raw,timestamp,raw_transaction,raw_receipt)
+      SELECT $1,x.* FROM jsonb_to_recordset($7::jsonb) AS x(tx_hash text,block_number numeric,transaction_index integer,from_address text,to_address text,value numeric,status text,gas_used numeric,effective_gas_price numeric,fee_raw numeric,timestamp timestamptz,raw_transaction jsonb,raw_receipt jsonb) CROSS JOIN saved_block b
+      ON CONFLICT(chain_id,tx_hash) DO UPDATE SET transaction_index=EXCLUDED.transaction_index,to_address=EXCLUDED.to_address,value=EXCLUDED.value,status=EXCLUDED.status,gas_used=EXCLUDED.gas_used,effective_gas_price=EXCLUDED.effective_gas_price,timestamp=EXCLUDED.timestamp,raw_transaction=COALESCE(transactions.raw_transaction,EXCLUDED.raw_transaction),raw_receipt=COALESCE(transactions.raw_receipt,EXCLUDED.raw_receipt)
+      WHERE transactions.block_number=EXCLUDED.block_number AND transactions.from_address=EXCLUDED.from_address AND transactions.fee_raw=EXCLUDED.fee_raw RETURNING tx_hash
+    ), saved_logs AS (
+      INSERT INTO raw_events(chain_id,block_number,block_hash,transaction_hash,transaction_index,log_index,emitter,topic0,topics,data,timestamp,raw_log)
+      SELECT $1,x.* FROM jsonb_to_recordset($8::jsonb) AS x(block_number numeric,block_hash text,transaction_hash text,transaction_index integer,log_index integer,emitter text,topic0 text,topics jsonb,data text,timestamp timestamptz,raw_log jsonb)
+      ON CONFLICT(chain_id,transaction_hash,log_index) DO NOTHING RETURNING id
+    ), saved_state AS (
+      INSERT INTO indexer_state(chain_id,start_block,last_processed_block,observed_head,raw_start_block) VALUES($1,$2,$2,$9,$2)
+      ON CONFLICT(chain_id) DO UPDATE SET last_processed_block=GREATEST(indexer_state.last_processed_block,EXCLUDED.last_processed_block),observed_head=GREATEST(indexer_state.observed_head,EXCLUDED.observed_head),raw_start_block=COALESCE(indexer_state.raw_start_block,EXCLUDED.raw_start_block),updated_at=now() RETURNING chain_id
+    ) SELECT count(*)::int txs FROM saved_transactions`,
     [
       chain,
       block.number,
@@ -121,23 +128,13 @@ export async function saveRawBlock(
       block.parentHash,
       block.timestamp,
       JSON.stringify(block.raw),
+      JSON.stringify(txRows),
+      JSON.stringify(logRows),
+      head,
     ],
   );
-  const { rows: written } = await db.query(
-    `INSERT INTO transactions(chain_id,tx_hash,block_number,transaction_index,from_address,to_address,value,status,gas_used,effective_gas_price,fee_raw,timestamp,raw_transaction,raw_receipt)
- SELECT $1,x.* FROM jsonb_to_recordset($2::jsonb) AS x(tx_hash text,block_number numeric,transaction_index integer,from_address text,to_address text,value numeric,status text,gas_used numeric,effective_gas_price numeric,fee_raw numeric,timestamp timestamptz,raw_transaction jsonb,raw_receipt jsonb)
- ON CONFLICT(chain_id,tx_hash) DO UPDATE SET transaction_index=EXCLUDED.transaction_index,to_address=EXCLUDED.to_address,value=EXCLUDED.value,status=EXCLUDED.status,gas_used=EXCLUDED.gas_used,effective_gas_price=EXCLUDED.effective_gas_price,timestamp=EXCLUDED.timestamp,raw_transaction=COALESCE(transactions.raw_transaction,EXCLUDED.raw_transaction),raw_receipt=COALESCE(transactions.raw_receipt,EXCLUDED.raw_receipt)
- WHERE transactions.block_number=EXCLUDED.block_number AND transactions.from_address=EXCLUDED.from_address AND transactions.fee_raw=EXCLUDED.fee_raw RETURNING tx_hash`,
-    [chain, JSON.stringify(txRows)],
-  );
-  if (written.length !== txRows.length)
+  if (written.txs !== txRows.length)
     throw new DataIntegrityError("Transaction conflicts with stored record");
-  await db.query(
-    `INSERT INTO raw_events(chain_id,block_number,block_hash,transaction_hash,transaction_index,log_index,emitter,topic0,topics,data,timestamp,raw_log)
- SELECT $1,x.* FROM jsonb_to_recordset($2::jsonb) AS x(block_number numeric,block_hash text,transaction_hash text,transaction_index integer,log_index integer,emitter text,topic0 text,topics jsonb,data text,timestamp timestamptz,raw_log jsonb)
- ON CONFLICT(chain_id,transaction_hash,log_index) DO NOTHING`,
-    [chain, JSON.stringify(logRows)],
-  );
   const {
     rows: [counts],
   } = await db.query(
@@ -146,15 +143,6 @@ export async function saveRawBlock(
   );
   if (counts.txs !== txRows.length || counts.logs !== logRows.length)
     throw new DataIntegrityError("Incomplete raw block write");
-  await db.query(
-    "UPDATE blocks SET raw_complete=true,processed_at=now() WHERE chain_id=$1 AND block_number=$2",
-    [chain, block.number],
-  );
-  await db.query(
-    `INSERT INTO indexer_state(chain_id,start_block,last_processed_block,observed_head,raw_start_block) VALUES($1,$2,$2,$3,$2)
- ON CONFLICT(chain_id) DO UPDATE SET last_processed_block=GREATEST(indexer_state.last_processed_block,EXCLUDED.last_processed_block),observed_head=GREATEST(indexer_state.observed_head,EXCLUDED.observed_head),raw_start_block=COALESCE(indexer_state.raw_start_block,EXCLUDED.raw_start_block),updated_at=now()`,
-    [chain, block.number, head],
-  );
   return true;
 }
 export async function commitRawBlock(
