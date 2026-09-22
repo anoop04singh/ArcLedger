@@ -207,3 +207,11 @@ export async function enforceHistoryBudget(
     capBytes: HISTORY_CAP_BYTES,
   };
 }
+
+/** Fail closed before committing history growth; the cleanup threshold leaves 100 MB below the cap. */
+export async function assertWriteBudget(db: SqlClient) {
+  if ((await databaseBytes(db)) >= HISTORY_TRIGGER_BYTES)
+    throw new StorageCapacityError(
+      "Storage write rolled back; retention must reclaim space before retrying.",
+    );
+}

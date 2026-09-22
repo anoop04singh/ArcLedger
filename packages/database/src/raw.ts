@@ -1,3 +1,4 @@
+import { assertWriteBudget } from "./retention.js";
 import { ARC_MAINNET } from "@arcledger/arc-config";
 import type { RawBlockRecord } from "@arcledger/types";
 import type { SqlClient } from "./index.js";
@@ -164,6 +165,7 @@ export async function commitRawBlock(
   await db.query("BEGIN");
   try {
     const inserted = await saveRawBlock(db, block, head);
+    await assertWriteBudget(db);
     await db.query("COMMIT");
     return inserted;
   } catch (error) {

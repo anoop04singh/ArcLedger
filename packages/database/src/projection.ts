@@ -1,3 +1,4 @@
+import { assertWriteBudget } from "./retention.js";
 import { ARC_MAINNET } from "@arcledger/arc-config";
 import {
   normalizeArcTransaction,
@@ -102,6 +103,7 @@ export async function projectPending(db: SqlClient, limit = 100) {
       );
       projected++;
     }
+    await assertWriteBudget(db);
     await db.query("COMMIT");
     return { projected, failed };
   } catch (error) {

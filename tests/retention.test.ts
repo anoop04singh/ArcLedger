@@ -144,3 +144,38 @@ it("resumes an interrupted multi-batch pruning plan without skipping the saved c
     await db.close();
   }
 }, 60000);
+
+it("rolls back raw and projected writes when the measured allocation reaches the safety threshold", async () => {
+  const db = new PGlite();
+  try {
+    await migrate(db);
+    const full = {
+      query: async (q: string, v?: unknown[]) =>
+        q.includes("pg_database_size")
+          ? { rows: [{ bytes: "300000000" }] }
+          : db.query(q, v),
+    };
+    await expect(commitRawBlock(full, fixture(), "100")).rejects.toThrow(
+      "rolled back",
+    );
+    expect(await checkpoint(db)).toBeUndefined();
+    expect(
+      (await db.query("SELECT count(*)::int n FROM blocks")).rows[0],
+    ).toEqual({ n: 0 });
+    await commitRawBlock(db, fixture(), "100");
+    await expect(projectPending(full)).rejects.toThrow("rolled back");
+    expect(
+      (await db.query("SELECT count(*)::int n FROM transfers")).rows[0],
+    ).toEqual({ n: 0 });
+    expect(
+      (
+        await db.query(
+          "SELECT count(*)::int n FROM transactions WHERE ledger_version=0",
+        )
+      ).rows[0],
+    ).toEqual({ n: 2 });
+    expect((await checkpoint(db))?.last_processed_block).toBe("100");
+  } finally {
+    await db.close();
+  }
+}, 30000);
