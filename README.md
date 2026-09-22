@@ -6,19 +6,162 @@ Arc exposes one USDC balance through an 18-decimal native representation and a 6
 
 The five-part MVP includes raw ingestion, Supabase/PostgreSQL persistence, a reusable normalizer, exact address accounting, four public read APIs, an explorer UI, independent Mainnet validation, and Railway deployment assets. Published to [GitHub](https://github.com/anoop04singh/ArcLedger) and deployed on Railway. Open the [website](https://web-production-e1571d.up.railway.app) or [live explorer](https://web-production-e1571d.up.railway.app/explorer). The explorer reports actual indexed coverage and lag; deployment does not imply the historical backlog is caught up.
 
-## Architecture
+## Contents
+
+- [The problem](#the-problem)
+- [What makes ArcLedger different](#what-makes-arcledger-different)
+- [Who it is for](#who-it-is-for)
+- [Architecture](#architecture)
+- [Repository layout](#repository-layout)
+- [Local demo](#local-demo)
+- [Mainnet and Supabase](#mainnet-and-supabase)
+- [Read API](#read-api)
+- [Tests and validation](#tests-and-validation)
+- [Deploy yourself to Railway](#deploy-yourself-to-railway)
+- [Rolling history: 400 MB database budget](#rolling-history-400-mb-database-budget)
+- [Future use cases](#future-use-cases)
+- [Contributing](#contributing)
+
+## The problem
+
+A blockchain event is evidence of activity, but it is not necessarily a separate economic movement. On Arc, USDC has a native representation with **18 decimals** and an ERC-20 interface with **6 decimals**. One payment can produce both a native system transfer event and an ERC-20 Transfer event.
+
+An indexer that adds every transfer log together can turn a single 10 USDC payment into 20 USDC of reported activity. Deduplicating by transaction hash does not solve this: a transaction can contain several legitimate movements, including repeated transfers between the same participants for the same amount.
+
+| Evidence for an illustrative payment | Raw integer amount | Decimals | Economic meaning |
+| --- | --- | --- | --- |
+| Native transfer | `10000000000000000000` | 18 | 10 USDC |
+| Matching ERC-20 transfer | `10000000` | 6 | The same 10 USDC |
+| Canonical ledger result | `10000000000000000000` | 18 | **10 USDC counted once** |
+
+This affects payment histories, treasury reports, volume dashboards and accounting systems that mistake multiple representations for multiple payments. Other details matter too: native precision can exceed six decimals, the transaction submitter may be a relayer rather than the token owner, and a failed transaction can still pay a fee.
+
+ArcLedger preserves protocol evidence, identifies economic movements, and derives address-level accounting entries. It does not add a token, custody funds, or require a smart contract.
+
+## What makes ArcLedger different
+
+### Match evidence one-to-one
+
+The normalizer scales ERC-20 units by `10^12` into the native 18-decimal domain. It matches records within the same transaction by exact sender, recipient and amount, consuming one native match per ERC-20 representation. Two identical legitimate payments remain two movements; another representation does not become another payment.
+
+Native events are the usual canonical source. A nonzero ERC-20 self-transfer can retain an audit record with zero transfer balance change, because Arc does not emit the corresponding native system event for that case. Other unmatched ERC-20 evidence produces a warning and is excluded from economic totals. See the [normalization contract](docs/normalization.md) for the exact rules.
+
+### Keep amounts exact and fees separate
+
+Accounting uses JavaScript `BigInt`, PostgreSQL `numeric(78,0)` and decimal strings in public APIs. Native amounts are not rounded to six decimals for storage or arithmetic. Compact explorer values link to full exact transaction amounts.
+
+The fee comes from the receipt, in native 18-decimal USDC:
 
 ```text
-Arc Mainnet RPC → raw indexer → Supabase PostgreSQL
-                                      ↑       ↓
-                              ledger projector
-                                      ↓
-                               Hono API → Next.js web
+feeRaw = gasUsed × effectiveGasPrice
 
-Fresh Arc RPC + stored snapshot → independent validator → validation_runs
+Illustrative sender accounting:
+Transfer          -10.000000 USDC
+Network fee        -0.000031 USDC
+Net change        -10.000031 USDC
 ```
 
-Raw data and its checkpoint commit together. Normalization is a separate atomic projection; parser failures never discard raw records. Values use BigInt/numeric(78,0), with exact decimal strings in public APIs. Current balances come from block-pinned eth_getBalance; history covers the indexed range.
+Fees are allocated once to the transaction submitter. Recipients do not inherit the sender's fee; a relayer's fee belongs to the relayer. Reverted transactions retain their fee without inventing a successful transfer. In a transaction with several movements, total transfer volume is distinct from any one address's net change.
+
+### Explain the result and preserve the evidence
+
+A transaction explanation connects each canonical movement to its source records, source precision, log indices and duplicate decisions. Original transaction, receipt and log payloads remain available for the **retained history window**, including through `?includeRaw=true`.
+
+A separate validator fetches fresh RPC data and uses independent decoding and accounting logic to compare it with stored results. Validation proves checks over a named sample; it does not certify every historical balance.
+
+## Who it is for
+
+| User | What the current MVP provides |
+| --- | --- |
+| Finance and treasury teams | Exact transfer/fee breakdowns, counterparties and transaction evidence |
+| Wallet and dashboard developers | Live RPC balances alongside canonical, cursor-paginated activity |
+| Analysts and researchers | Movement records without matched representation double-counting, with explicit coverage limits |
+| Payment application developers | Read APIs and explanations without writing their own event-matching engine |
+| Infrastructure operators | Independent workers, restart checkpoints, lag reporting and bounded storage |
+
+The hosted explorer demonstrates the implementation. The repository supports self-hosting; it is not a managed accounting service or an archival data guarantee.
+
+## Architecture
+
+```mermaid
+flowchart TD
+    RPC[Arc Mainnet RPC: primary and fallback] --> Indexer[Raw indexer]
+    Indexer -->|Atomic block, raw records and checkpoint| DB[(Supabase / PostgreSQL)]
+    DB --> Projector[Ledger projection worker]
+    Projector --> Normalize[Reusable normalizer]
+    Normalize -->|Atomic movements, entries and explanation| DB
+    DB --> API[Hono read API]
+    RPC -->|Current balance and chain head| API
+    API --> Web[Next.js explorer and landing page]
+    RPC -->|Fresh block and receipt data| Validator[Independent validator]
+    DB -->|Consistent stored snapshot| Validator
+    Validator -->|Bounded validation report| DB
+```
+
+### 1. Raw ingestion: preserve evidence first
+
+The Node.js/TypeScript indexer uses viem-backed RPC access to read committed blocks, transactions, receipts and logs. Requests try the primary provider and then the fallback; both endpoints are checked against the configured chain. Receipt logs and block logs must agree before a block is committed.
+
+Fetching has bounded concurrency, while block commits remain ordered. Each block and its raw records commit together with `last_processed_block`. Unique constraints and idempotent writes make replay safe after a restart or a lost commit acknowledgement. A dedicated PostgreSQL session holds the writer lock to prevent concurrent raw writers.
+
+`INDEX_START_BLOCK` selects a new installation's starting point; an existing checkpoint takes precedence. Arc's deterministic finality removes the need for a confirmation delay. Incomplete RPC results retry without advancing the checkpoint, while conflicting committed block metadata stops ingestion for investigation.
+
+### 2. Ledger projection: interpret independently
+
+The ledger worker reads retained transactions awaiting normalization and passes their receipt/log evidence to `packages/normalizer`. Canonical transfers, address entries and explanations are written atomically.
+
+Projection is separate from raw ingestion. A parsing failure leaves the original evidence available, while status and transaction responses expose pending projection instead of presenting incomplete accounting as finished. Raw indexing progress and canonical projection progress can differ.
+
+### 3. Database: raw, derived and operational records
+
+| Tables | Purpose |
+| --- | --- |
+| `blocks`, `transactions`, `raw_events` | Block metadata, original transaction/receipt payloads and protocol logs |
+| `transfers` | Canonical economic movements and matching evidence |
+| `address_entries` | Per-address transfers, self-transfer records and fee accounting |
+| `indexer_state` | Durable ingestion checkpoint and operational state |
+| `validation_runs` | Independent validation sample bounds, outcomes and findings |
+| `webhooks`, `webhook_deliveries` | Reserved schema; no active delivery worker |
+
+Versioned migrations maintain the schema. Both workers cooperate with the [400 MB retention policy](#rolling-history-400-mb-database-budget): raw and derived history expire together by complete block.
+
+### 4. Read API: live balances, indexed history
+
+The Hono service exposes four core read endpoints. Current balances use block-pinned `eth_getBalance`. Received/sent totals, fees and history come from the indexed database window. This distinction matters: a recent-history index cannot reconstruct a lifetime balance, and non-event state changes can affect balances.
+
+Pagination uses opaque cursors, not page numbers. A recorded transaction without a completed projection returns a pending response. Public reads are rate-limited; database/RPC failures remain explicit and never trigger substitution of demo data.
+
+### 5. Frontend: make accounting inspectable
+
+Next.js serves the landing page, live explorer, address history, transaction explanations and network/validation status. Server-side API access and fixed same-origin relays keep backend credentials out of the browser.
+
+The explorer shows measured lag, recent projected transactions, duplicate counts, retained coverage and validation scope. Its 15-second refresh is a UI polling interval, not an ingestion latency guarantee. Motion animations respect reduced-motion preferences.
+
+### 6. Validation and security boundaries
+
+The validator compares fresh RPC records with a repeatable-read database snapshot. Its independent decoder and arithmetic oracle do not invoke the normalizer to generate expected results. Reports identify the exact block range, completion time and `VALID`, `INVALID` or `ERROR` outcome.
+
+Remote PostgreSQL connections verify TLS. Backend-owned Supabase tables have RLS enabled without public policies, and browser-role grants are revoked. Browsers use the read API rather than accessing tables directly. Public reads require no wallet connection, user account or API key.
+
+## Repository layout
+
+```text
+apps/
+  indexer/          Raw block ingestion worker
+  api/              Hono read API and data access
+  web/              Next.js landing page and explorer
+packages/
+  arc-config/       Network configuration and RPC transport
+  database/         Connections, migrations and persistence
+  normalizer/       Reusable movement, fee and duplicate normalization
+  types/            Shared contracts and types
+scripts/            Ledger worker, validation and operational commands
+examples/           Example integrations
+tests/             Automated coverage
+docs/              Architecture, API and operational runbooks
+```
+
+Production uses **four long-running services**: web, API, indexer and ledger. The ledger entry point is `scripts/project-worker.ts`; it is a separate process sharing PostgreSQL, not an additional database. The validator runs on demand.
 
 ## Local demo
 
@@ -121,8 +264,54 @@ If a database is already over quota and read-only, stop both writers first. Use 
 
 ## Landing and explorer interactions
 
-The landing page explains the two USDC representations, matching, receipt-derived fees, validation scope and the rolling history window. It includes a scroll-driven SVG stream merge, a 2×→1× illustrative counter, text reveals, magnetic/rolling buttons, an interactive normalization card, API examples with copy controls, install commands and a keyboard-accessible FAQ. Animations use the free `motion/react` APIs and respect reduced-motion preferences. The explorer uses real status/recent-transaction responses, 15-second refresh, pause/resume, filters, explicit failure states, a loading skeleton and the storage/coverage notice.
+The landing page explains the problem, matching, fee treatment, validation scope and rolling history. Its editorial design follows the supplied Monad tokens: warm parchment, serif headings, monospace interface text, thin borders, rounded panels, pastel accents and a blue primary action. The hero illustrates two protocol records becoming one movement and explicitly labels its sample data.
 
-The refined UI consolidates status and validation navigation, removes the duplicate audience ticker, and provides All activity / Transfers / Fee only filters, with Transfers selected initially. Long fractional amounts use an explicit ellipsis in the feed; their transaction links expose the original exact values. Storage details expand on demand, while maintenance warnings remain visible. Validation badges describe a specific sample. Backend-owned Supabase tables have RLS enabled without public policies, and browser role grants remain revoked.
+Interactive normalization examples, API response previews with copy controls, installation commands and a keyboard-accessible FAQ connect the explanation to the implementation. Animations use `motion/react` and respect reduced-motion preferences.
+
+The explorer uses real status and recent-transaction responses, 15-second refresh, pause/resume, manual refresh and All activity / Transfers / Fee only filters. Transfers are selected initially. Loading, unavailable and stale-data states remain explicit. Long fractional amounts use an ellipsis in compact rows; transaction links expose full exact values. Storage details expand on demand, maintenance warnings remain visible, and validation badges describe a specific sample.
 
 Supabase's informational [RLS enabled without policies notice](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy) is intentional here: public Data API access is denied; the backend connects with its owner role.
+
+## Future use cases
+
+These are **potential extensions, not implemented features or delivery commitments**. Each builds on the canonical ledger and its evidence model.
+
+### Payment reconciliation and merchant operations
+
+A payment integration could associate canonical movements with invoices or payment intents, detect underpayments and overpayments, and show network fees separately. Durable webhooks could notify merchant systems when an indexed payment is ready. This requires application references, authenticated delivery, retries and idempotent consumers; the reserved webhook tables do not provide those capabilities today.
+
+### Treasury monitoring and accounting exports
+
+Teams could monitor controlled address lists, classify internal transfers, distinguish external spending from fees, and export entries into ERP or bookkeeping workflows. Address ownership, chart-of-accounts mapping and period-close rules would be additional application layers. Existing self-transfer and relayer handling provide a more accurate starting point.
+
+### Wallet activity and embedded explanations
+
+Wallets could embed the transaction explanation model to show what moved, who paid the fee and why two logs represent one payment. A client SDK could provide typed pagination and evidence access, reducing the custom code needed to build accurate activity feeds.
+
+### Auditable analytics and research
+
+An analytics layer could compute payment volumes, fee distributions and counterparty activity over defined coverage. Long-range research would need archival storage or exports before retention removes the evidence. Derived charts should retain coverage and normalization-version metadata so a moving history window cannot masquerade as a change in economic activity.
+
+### Larger deployments and archival storage
+
+Operators with larger storage budgets could separate recent query data from immutable evidence archives, add durable export pipelines and tune ingestion for higher-throughput RPC providers. These extensions require explicit retention, replay and retrieval guarantees. The current 400 MB deployment intentionally retains a rolling window.
+
+### Broader reconciliation and operational controls
+
+Future reconciliation could account for validator rewards and other non-event balance changes, then compare independently reconstructed deltas with chain state over a chosen range. Scheduled validation, alerts for lag or storage pressure, and richer projection diagnostics could support production operations. Today's transaction-level validation must not be interpreted as that broader balance reconciliation.
+
+### Optional platform features
+
+Authentication, API keys, organizations, billing and multichain support could be added if a hosted product requires them. They remain outside the MVP. Another chain would need explicit event and fee semantics rather than assuming Arc's matching rules apply unchanged. Tax reporting requires jurisdiction-specific rules beyond this ledger's scope.
+
+## Contributing
+
+Start with the [architecture](docs/architecture.md), [normalization rules](docs/normalization.md) and [API contract](docs/api.md). Keep ingestion independent from interpretation, preserve exact integer arithmetic, and retain enough evidence to explain every accounting decision.
+
+For a normalization bug, include the transaction hash, affected block range, expected economic movement and a sanitized description of the observed result. Do not publish database URLs or private RPC credentials. Retained raw evidence or a minimal fixture helps make a regression reproducible before history expires.
+
+Code changes should include relevant regression coverage and documentation updates when public behavior changes. Documentation-only edits do not require running the application or deploying services. See [testing](docs/testing.md) for the existing suites and bounded Mainnet validation workflow.
+
+## License
+
+ArcLedger is open source under the [MIT License](LICENSE).
