@@ -13,14 +13,13 @@ import {
 import { SearchBar } from "@/components/search";
 import { Enter, Reveal } from "@/components/motion";
 import { NormalizationDemo } from "@/components/normalization-demo";
+import { LedgerStage } from "@/components/ledger-stage";
 import {
   ApiPreview,
   CopyCode,
   FAQ,
   MagneticLink,
-  ScrambleHeadline,
   ScrollWords,
-  SignatureMerge,
   Steps,
 } from "@/components/landing-motion";
 const repo = "https://github.com/anoop04singh/ArcLedger";
@@ -72,7 +71,7 @@ export default function Home() {
           <h1>
             Every USDC movement on Arc.
             <br />
-            <ScrambleHeadline />
+            Counted once.
           </h1>
           <p className="landing-description">
             Arc shows the same USDC balance in two formats. Most tools count
@@ -89,7 +88,7 @@ export default function Home() {
             Open source · MIT licensed · No API keys · No accounts
           </p>
         </div>
-        <SignatureMerge />
+        <LedgerStage />
       </section>
       <div className="landing-search">
         <div>

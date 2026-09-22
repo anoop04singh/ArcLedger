@@ -2,11 +2,12 @@ import { ScrollHeader } from "@/components/landing-motion";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AppNav } from "@/components/app-nav";
-import "@fontsource/geist/400.css";
-import "@fontsource/geist/500.css";
-import "@fontsource/geist/600.css";
-import "@fontsource/geist-mono/400.css";
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/500.css";
+import "@fontsource/source-serif-4/400.css";
 import "./globals.css";
+import "./design-variables.css";
+import "./monad.css";
 export const metadata: Metadata = {
   title: {
     default: "ArcLedger — One dollar. One ledger.",
@@ -22,7 +23,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>
+      <body className="monad">
         <div className="ambient" aria-hidden="true">
           <i />
           <i />
@@ -33,10 +34,8 @@ export default function RootLayout({
         </a>
         <ScrollHeader>
           <Link href="/" className="brand" aria-label="ArcLedger home">
-            <span className="brand-mark">
-              a<span />
-            </span>
-            ArcLedger
+            <span className="monad-brand-dot" aria-hidden="true" />
+            arcledger
           </Link>
           <AppNav />
           <span className="network-label">
