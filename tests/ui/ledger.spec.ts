@@ -197,6 +197,8 @@ test("landing copy, API examples, copy controls, FAQ and reduced-motion layout",
   page,
   context,
 }) => {
+  const browserErrors: string[] = [];
+  page.on("pageerror", (error) => browserErrors.push(error.message));
   await page.emulateMedia({ reducedMotion: "reduce" });
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/");
@@ -264,4 +266,5 @@ test("landing copy, API examples, copy controls, FAQ and reduced-motion layout",
       ),
     ).toBe(true);
   }
+  expect(browserErrors).toEqual([]);
 });

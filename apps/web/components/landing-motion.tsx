@@ -98,7 +98,11 @@ export function ScrambleHeadline() {
 }
 export function SignatureMerge() {
   const ref = useRef<HTMLDivElement>(null),
-    reduce = useReducedMotion();
+    prefersReducedMotion = useReducedMotion();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  // Server and first browser render must agree before applying media preferences.
+  const reduce = mounted && prefersReducedMotion;
   const { scrollYProgress } = useScroll({
     target: ref,
     offset: ["start 75%", "end 30%"],
